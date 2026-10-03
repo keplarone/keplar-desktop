@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+ship/
+*.log
+.DS_Store
+*.tsbuildinfo
+.env
+.env.*

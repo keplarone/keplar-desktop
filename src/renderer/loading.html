@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
+    />
+    <title>Keplar</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #ffffff;
+      }
+      body {
+        color: #0a0a0a;
+        font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        display: grid;
+        place-items: center;
+      }
+      main {
+        text-align: center;
+        padding: 32px 24px;
+      }
+      svg {
+        width: 72px;
+        height: 72px;
+        display: block;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 28px;
+        font-weight: 600;
+        letter-spacing: -0.03em;
+        margin: 18px 0 8px;
+      }
+      p {
+        margin: 0;
+        color: #3f3f3f;
+        font-size: 15px;
+        line-height: 1.45;
+      }
+      .bar {
+        margin: 28px auto 0;
+        width: 128px;
+        height: 2px;
+        background: #ececec;
+        overflow: hidden;
+        border-radius: 2px;
+      }
+      .bar span {
+        display: block;
+        height: 100%;
+        width: 40%;
+        background: #0a0a0a;
+        animation: slide 1.1s ease-in-out infinite;
+      }
+      @keyframes slide {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(320%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .bar span {
+          animation: none;
+          width: 100%;
+          opacity: 0.45;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg viewBox="0 0 512 512" aria-hidden="true">
+        <rect x="76" y="76" width="232" height="232" rx="74" fill="#0a0a0a" />
+        <path
+          fill="#0a0a0a"
+          d="M295 76h143c11 0 18 7 18 18v151c0 8-4 12-9 9L283 92c-8-8-2-16 12-16Z"
+        />
+        <circle cx="358" cy="358" r="119" fill="#0a0a0a" />
+      </svg>
+      <h1>Keplar</h1>
+      <p>One question. Multiple intelligences. One answer.</p>
+      <div class="bar" role="progressbar" aria-label="Opening Keplar">
+        <span></span>
+      </div>
+    </main>
+  </body>
+</html>

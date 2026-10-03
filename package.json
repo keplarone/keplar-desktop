@@ -1,0 +1,45 @@
+{
+  "name": "keplar-desktop",
+  "productName": "Keplar",
+  "version": "0.1.0",
+  "description": "Desktop client for Keplar. One question. Multiple intelligences. One answer.",
+  "author": "Keplar <team@keplar.one>",
+  "license": "UNLICENSED",
+  "homepage": "https://keplar.one",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keplarone/keplar-desktop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/keplarone/keplar-desktop/issues"
+  },
+  "main": "dist/main/main.js",
+  "desktopName": "keplar.desktop",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "icons": "node scripts/generate-icons.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-static.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --test test/**/*.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:release": "npm run build && node scripts/build-release.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.6.4",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "eslint": "10.12.0",
+    "png2icons": "2.0.1",
+    "sharp": "0.35.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.0"
+  }
+}
