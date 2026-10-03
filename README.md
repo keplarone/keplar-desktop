@@ -106,8 +106,8 @@ Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Kep
 3. Tag that commit with the same version and push the tag:
 
 ```bash
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 4. The **Release** workflow runs on `windows-latest`, `macos-latest`, and `ubuntu-latest`, builds the installers, writes `SHA256SUMS`, and publishes a GitHub Release for that tag with generated notes. It also uploads `latest.yml`, `latest-mac.yml`, and `latest-linux.yml`, which `electron-updater` reads.
@@ -134,7 +134,9 @@ Notarization needs the Apple secrets and a Developer ID certificate in `CSC_LINK
 
 ## What the app allows
 
-The window has no File, Edit, View, Window, or Help bar. On Windows and Linux the application menu is removed. On macOS the system menu bar keeps About, Hide, Quit, and Edit so Command-C, Command-V, and Command-Q keep working. Reload is Ctrl+R or F5 (Command-R on macOS). Zoom is Ctrl or Command with plus, minus, or 0. Full screen is F11, or Control-Command-F on macOS. Developer tools stay off in an installed build.
+The window has no File, Edit, View, Window, or Help bar. On Windows and Linux the application menu is removed. On macOS the system menu bar keeps About, Hide, Quit, and Edit so Command-C, Command-V, and Command-Q keep working. Reload is Ctrl+R or F5 (Command-R on macOS). Zoom is Ctrl or Command with plus, minus, or 0. Full screen is F11, or Control-Command-F on macOS, and Escape leaves it. The page then fills the screen, including over the Windows taskbar. Developer tools stay off in an installed build. The window remembers its size, whether it was maximized, and whether it was full screen.
+
+The user agent includes the token `keplar-desktop`. The document element is `html.keplar-desktop` with `data-keplar-desktop`. While the window is not full screen, `env(titlebar-area-x)`, `env(titlebar-area-y)`, `env(titlebar-area-width)`, and `env(titlebar-area-height)` describe the band beside the window controls. keplar.one can pad its nav with those values and mark non-interactive header space with `data-keplar-drag`. Links and buttons in that band stay clickable.
 
 The main window loads `https://keplar.one` only, including subdomains, and only over HTTPS. `keplar://` links open the matching path on that site (`keplar://app/chat` opens `https://keplar.one/app/chat`). The window title stays Keplar One, including when the site says Ask Keplar.
 

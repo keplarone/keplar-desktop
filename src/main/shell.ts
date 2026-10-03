@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  screen,
   session,
   shell,
   type BrowserWindowConstructorOptions,
@@ -10,7 +11,13 @@ import {
 } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { APP_TITLE, mainWindowChrome, windowDragCss } from "./chrome";
+import {
+  APP_TITLE,
+  fullscreenHideCss,
+  mainWindowChrome,
+  titleBarOverlay,
+  windowDragCss,
+} from "./chrome";
 import { bindAccelerators } from "./menu";
 import {
   APP_URL,
@@ -21,7 +28,15 @@ import {
   isSafeExternalUrl,
   urlForLog,
 } from "./policy";
-import { loadWindowState, trackWindowState, windowMinimums } from "./window-state";
+import { desktopUserAgent } from "./user-agent";
+import {
+  captureFrameForFullscreen,
+  ensureFullscreenFrame,
+  loadWindowState,
+  takeFullscreenRestore,
+  trackWindowState,
+  windowMinimums,
+} from "./window-state";
 
 let mainWindow: BrowserWindow | null = null;
 let mainWebContentsId: number | null = null;
@@ -53,6 +68,33 @@ export function takeInitialUrl(argv: readonly string[]): string {
   const initial = pendingDeepLink ?? fromArgvUrl ?? APP_URL;
   pendingDeepLink = null;
   return initial;
+}
+
+export function toggleMainFullscreen(): void {
+  const win = getMainWindow();
+  if (!win) return;
+  if (win.isFullScreen()) {
+    win.setFullScreen(false);
+    return;
+  }
+  beginFullscreen(win);
+}
+
+export function exitMainFullscreen(): void {
+  const win = getMainWindow();
+  if (win?.isFullScreen()) win.setFullScreen(false);
+}
+
+function beginFullscreen(win: BrowserWindow, maximized = win.isMaximized()): void {
+  captureFrameForFullscreen(win, maximized);
+  if (process.platform !== "darwin") {
+    win.setBounds(screen.getDisplayMatching(win.getBounds()).bounds);
+  }
+  if (process.platform === "win32") win.setAlwaysOnTop(true, "screen-saver");
+  win.setFullScreen(true);
+  if (process.platform !== "darwin") {
+    win.setBounds(screen.getDisplayMatching(win.getBounds()).bounds);
+  }
 }
 
 export function focusMain(): void {
@@ -128,9 +170,10 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   });
   win.webContents.on("dom-ready", () => {
     if (win.isDestroyed()) return;
-    void win.webContents.insertCSS(windowDragCss(process.platform));
+    void win.webContents.insertCSS(windowDragCss());
     win.setTitle(APP_TITLE);
   });
+  bindFullscreenChrome(win);
 
   win.on("closed", () => {
     if (mainWindow === win) {
@@ -139,13 +182,12 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
     }
   });
 
-  const showNow = (): void => {
+  win.once("ready-to-show", () => {
     if (win.isDestroyed() || win.isVisible()) return;
-    if (state.isMaximized) win.maximize();
+    if (state.isFullScreen) beginFullscreen(win, state.isMaximized);
+    else if (state.isMaximized) win.maximize();
     win.show();
-  };
-  win.once("ready-to-show", showNow);
-  setTimeout(showNow, 1500);
+  });
 
   win.webContents.on(
     "did-fail-load",
@@ -181,6 +223,7 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
 
 export function configureSession(): void {
   const ses = session.defaultSession;
+  ses.setUserAgent(desktopUserAgent(ses.getUserAgent()));
 
   ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
     callback(allowsPermission(permission, details));
@@ -390,7 +433,60 @@ function hardenedWebPreferences(): WebPreferences {
     navigateOnDragDrop: false,
     safeDialogs: true,
     devTools: !app.isPackaged,
+    backgroundThrottling: true,
   };
+}
+
+function bindFullscreenChrome(win: BrowserWindow): void {
+  let hiddenCss: string | null = null;
+
+  let applying = false;
+  const apply = (): void => {
+    if (applying || win.isDestroyed()) return;
+    applying = true;
+    try {
+      const fullscreen = win.isFullScreen();
+      if (fullscreen) ensureFullscreenFrame(win);
+      win.setTitleBarOverlay(titleBarOverlay(fullscreen));
+      if (process.platform === "darwin") win.setWindowButtonVisibility(!fullscreen);
+      if (!fullscreen && process.platform === "win32") win.setAlwaysOnTop(false);
+      if (!fullscreen) {
+        const restore = takeFullscreenRestore();
+        if (restore) {
+          win.setBounds(restore.bounds);
+          if (restore.maximized) win.maximize();
+        }
+      }
+      void syncFullscreenCss(win, fullscreen, () => hiddenCss, (key) => {
+        hiddenCss = key;
+      });
+    } finally {
+      applying = false;
+    }
+  };
+
+  win.on("enter-full-screen", apply);
+  win.on("leave-full-screen", apply);
+}
+
+async function syncFullscreenCss(
+  win: BrowserWindow,
+  fullscreen: boolean,
+  getKey: () => string | null,
+  setKey: (key: string | null) => void,
+): Promise<void> {
+  if (win.isDestroyed()) return;
+  const key = getKey();
+  if (fullscreen) {
+    if (key) return;
+    const inserted = await win.webContents.insertCSS(fullscreenHideCss());
+    if (!win.isDestroyed() && win.isFullScreen()) setKey(inserted);
+    else await win.webContents.removeInsertedCSS(inserted);
+    return;
+  }
+  if (!key) return;
+  await win.webContents.removeInsertedCSS(key);
+  setKey(null);
 }
 
 function allowsPermission(

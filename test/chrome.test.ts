@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CHROME_COLOR, mainWindowChrome, windowDragCss } from "../src/main/chrome.ts";
+import {
+  CHROME_COLOR,
+  mainWindowChrome,
+  titleBarOverlay,
+  windowDragCss,
+} from "../src/main/chrome.ts";
 
 test("hidden title bar uses a dark overlay and a drag strip", () => {
   const win = mainWindowChrome("win32");
@@ -13,10 +18,15 @@ test("hidden title bar uses a dark overlay and a drag strip", () => {
 
   const mac = mainWindowChrome("darwin");
   assert.deepEqual(mac.trafficLightPosition, { x: 16, y: 10 });
+  assert.equal(titleBarOverlay(true).height, 0);
+  assert.equal(titleBarOverlay(false).height, 36);
 
-  const css = windowDragCss("linux");
+  const css = windowDragCss();
+  assert.match(css, /env\(titlebar-area-x,/);
+  assert.match(css, /env\(titlebar-area-width,/);
+  assert.match(css, /env\(titlebar-area-height,/);
   assert.match(css, /-webkit-app-region:\s*drag/);
+  assert.match(css, /-webkit-app-region:\s*no-drag/);
+  assert.doesNotMatch(css, /#main/);
   assert.match(css, new RegExp(CHROME_COLOR));
-  assert.match(windowDragCss("darwin"), /titlebar-area-x, 76px/);
-  assert.match(windowDragCss("win32"), /100% - 140px/);
 });

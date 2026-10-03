@@ -17,6 +17,7 @@ export interface MainWindowChrome {
   titleBarStyle: "hidden";
   titleBarOverlay: TitleBarOverlayOptions;
   autoHideMenuBar: false;
+  fullscreenable: true;
   trafficLightPosition?: { x: number; y: number };
 }
 
@@ -25,12 +26,9 @@ export function mainWindowChrome(platform: NodeJS.Platform): MainWindowChrome {
     title: APP_TITLE,
     backgroundColor: CHROME_COLOR,
     titleBarStyle: "hidden",
-    titleBarOverlay: {
-      color: CHROME_COLOR,
-      symbolColor: CHROME_SYMBOL,
-      height: TITLEBAR_HEIGHT,
-    },
+    titleBarOverlay: titleBarOverlay(false),
     autoHideMenuBar: false,
+    fullscreenable: true,
   };
   if (platform === "darwin") {
     chrome.trafficLightPosition = { x: 16, y: 10 };
@@ -38,42 +36,57 @@ export function mainWindowChrome(platform: NodeJS.Platform): MainWindowChrome {
   return chrome;
 }
 
+export function titleBarOverlay(fullscreen: boolean): TitleBarOverlayOptions {
+  if (fullscreen) {
+    return { color: "#00000000", symbolColor: "#00000000", height: 0 };
+  }
+  return { color: CHROME_COLOR, symbolColor: CHROME_SYMBOL, height: TITLEBAR_HEIGHT };
+}
+
 /**
- * A drag strip under the hidden title bar. On macOS it starts after the
- * traffic lights. On Windows and Linux it stops before the overlay buttons.
+ * The Window Controls Overlay exposes env(titlebar-area-x/y/width/height).
+ * The drag layer covers only that band. Links and buttons sit above it, so
+ * the site nav stays clickable and empty space in the band still drags.
  */
-export function windowDragCss(platform: NodeJS.Platform): string {
-  const height = `${TITLEBAR_HEIGHT}px`;
-  const left = platform === "darwin" ? "env(titlebar-area-x, 76px)" : "env(titlebar-area-x, 0px)";
-  const width =
-    platform === "darwin"
-      ? "env(titlebar-area-width, calc(100% - 76px))"
-      : "env(titlebar-area-width, calc(100% - 140px))";
+export function windowDragCss(): string {
   return `
-    :root { --keplar-titlebar: ${height}; }
+    :root {
+      --titlebar-area-x: env(titlebar-area-x, 0px);
+      --titlebar-area-y: env(titlebar-area-y, 0px);
+      --titlebar-area-width: env(titlebar-area-width, 100%);
+      --titlebar-area-height: env(titlebar-area-height, 0px);
+    }
     html { background: ${CHROME_COLOR}; }
-    body::before {
+    html::before {
       content: "";
       position: fixed;
-      z-index: 2147483646;
-      top: env(titlebar-area-y, 0px);
-      left: ${left};
-      width: ${width};
-      height: env(titlebar-area-height, var(--keplar-titlebar));
+      z-index: 1;
+      top: var(--titlebar-area-y);
+      left: var(--titlebar-area-x);
+      width: var(--titlebar-area-width);
+      height: var(--titlebar-area-height);
       -webkit-app-region: drag;
-      background: ${CHROME_COLOR};
+      background: transparent;
     }
-    #main {
-      margin-top: var(--keplar-titlebar) !important;
-      height: calc(100vh - var(--keplar-titlebar)) !important;
-      box-sizing: border-box !important;
+    :is(a, button, input, textarea, select, summary, label, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [contenteditable="true"]) {
+      -webkit-app-region: no-drag;
+      position: relative;
+      z-index: 2;
     }
-    #keplar-sidebar {
-      top: var(--keplar-titlebar) !important;
-      height: calc(100vh - var(--keplar-titlebar)) !important;
+    [data-keplar-drag] { -webkit-app-region: drag; }
+    [data-keplar-drag] :is(a, button, input, textarea, select, label, [role="button"], [role="link"]) {
+      -webkit-app-region: no-drag;
     }
-    [data-placement="top"] {
-      top: var(--keplar-titlebar) !important;
+  `;
+}
+
+export function fullscreenHideCss(): string {
+  return `
+    html::before, body::before {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      -webkit-app-region: no-drag !important;
     }
   `;
 }

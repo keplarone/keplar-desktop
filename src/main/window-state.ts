@@ -8,13 +8,41 @@ export interface WindowState {
   x?: number;
   y?: number;
   isMaximized: boolean;
+  isFullScreen: boolean;
 }
 
 const DEFAULT_STATE: WindowState = {
   width: 1200,
   height: 800,
   isMaximized: false,
+  isFullScreen: false,
 };
+
+let frameBeforeFullscreen: { bounds: Rectangle; maximized: boolean } | null = null;
+
+export function captureFrameForFullscreen(win: BrowserWindow, maximized = win.isMaximized()): void {
+  if (win.isDestroyed() || win.isFullScreen()) return;
+  const bounds = maximized ? win.getNormalBounds() : win.getBounds();
+  frameBeforeFullscreen = {
+    bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+    maximized,
+  };
+}
+
+export function ensureFullscreenFrame(win: BrowserWindow): void {
+  if (frameBeforeFullscreen || win.isDestroyed()) return;
+  const bounds = win.getNormalBounds();
+  frameBeforeFullscreen = {
+    bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+    maximized: false,
+  };
+}
+
+export function takeFullscreenRestore(): { bounds: Rectangle; maximized: boolean } | null {
+  const frame = frameBeforeFullscreen;
+  frameBeforeFullscreen = null;
+  return frame;
+}
 
 const MIN_WIDTH = 720;
 const MIN_HEIGHT = 560;
@@ -37,14 +65,20 @@ export function loadWindowState(): WindowState {
 export function trackWindowState(win: BrowserWindow): void {
   const save = (): void => {
     if (win.isDestroyed()) return;
-    const isMaximized = win.isMaximized();
-    const bounds = isMaximized ? win.getNormalBounds() : win.getBounds();
+    const isFullScreen = win.isFullScreen();
+    const isMaximized = !isFullScreen && win.isMaximized();
+    const bounds = isFullScreen
+      ? (frameBeforeFullscreen?.bounds ?? win.getNormalBounds())
+      : isMaximized
+        ? win.getNormalBounds()
+        : win.getBounds();
     const next: WindowState = {
       width: bounds.width,
       height: bounds.height,
       x: bounds.x,
       y: bounds.y,
-      isMaximized,
+      isMaximized: isFullScreen ? (frameBeforeFullscreen?.maximized ?? false) : isMaximized,
+      isFullScreen,
     };
     try {
       fs.mkdirSync(path.dirname(windowStatePath()), { recursive: true });
@@ -62,6 +96,10 @@ export function trackWindowState(win: BrowserWindow): void {
 
   win.on("resize", schedule);
   win.on("move", schedule);
+  win.on("maximize", schedule);
+  win.on("unmaximize", schedule);
+  win.on("enter-full-screen", schedule);
+  win.on("leave-full-screen", schedule);
   win.on("close", () => {
     if (timer) clearTimeout(timer);
     save();
@@ -81,6 +119,7 @@ function sanitize(value: unknown): WindowState | null {
     width,
     height,
     isMaximized: record.isMaximized === true,
+    isFullScreen: record.isFullScreen === true,
   };
 
   const x = typeof record.x === "number" ? record.x : undefined;

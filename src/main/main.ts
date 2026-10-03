@@ -1,6 +1,7 @@
 import path from "node:path";
 import { app } from "electron";
 import { installMenu } from "./menu";
+import { desktopUserAgent } from "./user-agent";
 import {
   configureSession,
   createMainWindow,
@@ -14,6 +15,10 @@ import { setupAutoUpdater } from "./updater";
 
 // Keep the session folder from before the display name became Keplar One.
 app.setPath("userData", path.join(app.getPath("appData"), "Keplar"));
+app.userAgentFallback = desktopUserAgent(app.userAgentFallback);
+app.commandLine.appendSwitch("enable-gpu-rasterization");
+app.commandLine.appendSwitch("enable-zero-copy");
+app.commandLine.appendSwitch("disable-features", "SpareRendererForSitePerProcess");
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {

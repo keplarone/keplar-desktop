@@ -20,12 +20,14 @@ export type AcceleratorAction =
   | "zoomOut"
   | "resetZoom"
   | "fullscreen"
+  | "exitFullscreen"
   | "devtools";
 
 export function acceleratorAction(
   input: AcceleratorInput,
   platform: NodeJS.Platform,
   devTools: boolean,
+  fullscreen = false,
 ): AcceleratorAction | "blocked" | null {
   if (input.type !== "keyDown") return null;
 
@@ -39,6 +41,10 @@ export function acceleratorAction(
   if (devtoolsChord) {
     if (!devTools || input.isAutoRepeat) return "blocked";
     return "devtools";
+  }
+
+  if (key === "Escape" && !input.alt && !input.control && !input.meta && !input.shift) {
+    return fullscreen && !input.isAutoRepeat ? "exitFullscreen" : null;
   }
 
   if (input.isAutoRepeat) {

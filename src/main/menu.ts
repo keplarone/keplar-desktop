@@ -11,6 +11,7 @@ import {
   type AcceleratorInput,
 } from "./accelerators";
 import { APP_TITLE } from "./chrome";
+import { exitMainFullscreen, toggleMainFullscreen } from "./shell";
 
 const ZOOM_MIN = -3.8;
 const ZOOM_MAX = 6;
@@ -35,6 +36,7 @@ export function bindAccelerators(
       input as AcceleratorInput,
       process.platform,
       !app.isPackaged,
+      win.isFullScreen(),
     );
     if (!action) return;
     event.preventDefault();
@@ -67,7 +69,11 @@ function runAccelerator(
     return;
   }
   if (action === "fullscreen") {
-    win.setFullScreen(!win.isFullScreen());
+    toggleMainFullscreen();
+    return;
+  }
+  if (action === "exitFullscreen") {
+    exitMainFullscreen();
     return;
   }
   if (action === "devtools" && !app.isPackaged) {

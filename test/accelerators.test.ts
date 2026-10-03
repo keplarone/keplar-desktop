@@ -28,6 +28,11 @@ test("reload, zoom, and fullscreen shortcuts", () => {
     acceleratorAction(press({ key: "f", code: "KeyF", meta: true, control: true }), "darwin", false),
     "fullscreen",
   );
+  assert.equal(
+    acceleratorAction(press({ key: "Escape", code: "Escape" }), "win32", false, true),
+    "exitFullscreen",
+  );
+  assert.equal(acceleratorAction(press({ key: "Escape", code: "Escape" }), "darwin", false, false), null);
 });
 
 test("copy and paste are not intercepted", () => {
