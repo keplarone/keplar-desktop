@@ -95,7 +95,7 @@ npm run dist
 
 Installers are written to `release/`. A full matrix (Windows NSIS, macOS dmg and zip for x64 and arm64, Linux AppImage, deb, and rpm) is built by the release workflow, not by one machine.
 
-Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Keplar mark: a rounded square, a wedge, and a circle.
+Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Keplar mark on white: a black rounded square, a black rounded right triangle, and a black circle.
 
 ## Cut a release
 
@@ -104,8 +104,8 @@ Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Kep
 3. Tag that commit with the same version and push the tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 4. The **Release** workflow runs on `windows-latest`, `macos-latest`, and `ubuntu-latest`, builds the installers, writes `SHA256SUMS`, and publishes a GitHub Release for that tag with generated notes. It also uploads `latest.yml`, `latest-mac.yml`, and `latest-linux.yml`, which `electron-updater` reads.

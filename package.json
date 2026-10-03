@@ -1,7 +1,7 @@
 {
   "name": "keplar-desktop",
   "productName": "Keplar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop client for Keplar. One question. Multiple intelligences. One answer.",
   "author": "Keplar <team@keplar.one>",
   "license": "UNLICENSED",
