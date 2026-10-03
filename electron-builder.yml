@@ -1,0 +1,70 @@
+appId: one.keplar.desktop
+productName: Keplar
+copyright: Copyright © Keplar
+artifactName: Keplar-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - package.json
+  - "!dist/**/*.map"
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+asar: true
+protocols:
+  - name: Keplar
+    schemes:
+      - keplar
+publish:
+  provider: github
+  owner: keplarone
+  repo: keplar-desktop
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  extendInfo:
+    NSMicrophoneUsageDescription: Keplar uses the microphone when you choose voice input on keplar.one. This app does not record or store audio itself.
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: Keplar
+  uninstallDisplayName: Keplar
+linux:
+  icon: build/icons
+  category: Utility
+  executableName: keplar
+  syncDesktopName: true
+  synopsis: One question. Multiple intelligences. One answer.
+  maintainer: Keplar <team@keplar.one>
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+    - target: rpm
+      arch:
+        - x64
