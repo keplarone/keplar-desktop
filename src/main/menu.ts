@@ -2,30 +2,89 @@ import {
   app,
   dialog,
   Menu,
-  shell,
   type BrowserWindow,
   type MenuItemConstructorOptions,
 } from "electron";
+import {
+  acceleratorAction,
+  type AcceleratorAction,
+  type AcceleratorInput,
+} from "./accelerators";
+import { APP_TITLE } from "./chrome";
 
-export interface MenuActions {
-  getWindow: () => BrowserWindow | null;
-  reload: () => void;
-  goBack: () => void;
-  goForward: () => void;
-  checkForUpdates: () => void;
+const ZOOM_MIN = -3.8;
+const ZOOM_MAX = 6;
+
+export function installMenu(): void {
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(Menu.buildFromTemplate(macTemplate()));
+    return;
+  }
+  Menu.setApplicationMenu(null);
 }
 
-export function installMenu(actions: MenuActions): void {
-  const isMac = process.platform === "darwin";
-  const template: MenuItemConstructorOptions[] = [];
+export function bindAccelerators(
+  win: BrowserWindow,
+  actions: { reload: () => void },
+): void {
+  win.setMenuBarVisibility(false);
+  if (process.platform !== "darwin") win.setMenu(null);
 
-  if (isMac) {
-    template.push({
+  win.webContents.on("before-input-event", (event, input) => {
+    const action = acceleratorAction(
+      input as AcceleratorInput,
+      process.platform,
+      !app.isPackaged,
+    );
+    if (!action) return;
+    event.preventDefault();
+    if (action === "blocked") return;
+    runAccelerator(win, action, actions.reload);
+  });
+}
+
+function runAccelerator(
+  win: BrowserWindow,
+  action: AcceleratorAction,
+  reload: () => void,
+): void {
+  if (win.isDestroyed()) return;
+  const contents = win.webContents;
+  if (action === "reload") {
+    reload();
+    return;
+  }
+  if (action === "zoomIn") {
+    contents.setZoomLevel(clampZoom(contents.getZoomLevel() + 1));
+    return;
+  }
+  if (action === "zoomOut") {
+    contents.setZoomLevel(clampZoom(contents.getZoomLevel() - 1));
+    return;
+  }
+  if (action === "resetZoom") {
+    contents.setZoomLevel(0);
+    return;
+  }
+  if (action === "fullscreen") {
+    win.setFullScreen(!win.isFullScreen());
+    return;
+  }
+  if (action === "devtools" && !app.isPackaged) {
+    contents.toggleDevTools();
+  }
+}
+
+function clampZoom(level: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, level));
+}
+
+function macTemplate(): MenuItemConstructorOptions[] {
+  return [
+    {
       label: app.name,
       submenu: [
-        { label: "About Keplar", click: () => showAbout(actions.getWindow()) },
-        { type: "separator" },
-        { role: "services" },
+        { label: `About ${APP_TITLE}`, click: () => showAbout() },
         { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },
@@ -33,75 +92,27 @@ export function installMenu(actions: MenuActions): void {
         { type: "separator" },
         { role: "quit" },
       ],
-    });
-  }
-
-  template.push({
-    label: "File",
-    submenu: [
-      isMac ? { role: "close" } : { role: "quit" },
-    ],
-  });
-
-  template.push({ role: "editMenu" });
-
-  template.push({
-    label: "View",
-    submenu: [
-      {
-        label: "Reload",
-        accelerator: "CmdOrCtrl+R",
-        click: () => actions.reload(),
-      },
-      {
-        label: "Back",
-        accelerator: isMac ? "Cmd+[" : "Alt+Left",
-        click: () => actions.goBack(),
-      },
-      {
-        label: "Forward",
-        accelerator: isMac ? "Cmd+]" : "Alt+Right",
-        click: () => actions.goForward(),
-      },
-      { type: "separator" },
-      { role: "resetZoom" },
-      { role: "zoomIn" },
-      { role: "zoomOut" },
-      { type: "separator" },
-      { role: "togglefullscreen" },
-    ],
-  });
-
-  template.push({ role: "windowMenu" });
-
-  const helpSubmenu: MenuItemConstructorOptions[] = [
-    {
-      label: "Keplar on the web",
-      click: () => {
-        void shell.openExternal("https://keplar.one");
-      },
     },
     {
-      label: "Check for Updates…",
-      click: () => actions.checkForUpdates(),
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+      ],
     },
   ];
-  if (!isMac) {
-    helpSubmenu.push(
-      { type: "separator" },
-      { label: "About Keplar", click: () => showAbout(actions.getWindow()) },
-    );
-  }
-  template.push({ label: "Help", submenu: helpSubmenu });
-
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function showAbout(parent: BrowserWindow | null): void {
-  const options = {
-    type: "info" as const,
-    title: "About Keplar",
-    message: "Keplar",
+function showAbout(): void {
+  void dialog.showMessageBox({
+    type: "info",
+    title: `About ${APP_TITLE}`,
+    message: APP_TITLE,
     detail: [
       `Version ${app.getVersion()}`,
       "",
@@ -111,10 +122,5 @@ function showAbout(parent: BrowserWindow | null): void {
       "Questions and answers stay on Keplar's servers.",
     ].join("\n"),
     buttons: ["OK"],
-  };
-  if (parent && !parent.isDestroyed()) {
-    void dialog.showMessageBox(parent, options);
-    return;
-  }
-  void dialog.showMessageBox(options);
+  });
 }

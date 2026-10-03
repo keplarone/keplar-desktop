@@ -1,8 +1,8 @@
 {
   "name": "keplar-desktop",
-  "productName": "Keplar",
-  "version": "0.1.1",
-  "description": "Desktop client for Keplar. One question. Multiple intelligences. One answer.",
+  "productName": "Keplar One",
+  "version": "0.1.2",
+  "description": "Desktop client for Keplar One. One question. Multiple intelligences. One answer.",
   "author": "Keplar <team@keplar.one>",
   "license": "UNLICENSED",
   "homepage": "https://keplar.one",
@@ -14,7 +14,7 @@
     "url": "https://github.com/keplarone/keplar-desktop/issues"
   },
   "main": "dist/main/main.js",
-  "desktopName": "keplar.desktop",
+  "desktopName": "keplar-one.desktop",
   "engines": {
     "node": ">=22"
   },

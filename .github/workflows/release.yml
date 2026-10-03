@@ -145,7 +145,7 @@ jobs:
             xargs -a filelist.txt gh release upload "${TAG}" --clobber
           else
             xargs -a filelist.txt gh release create "${TAG}" \
-              --title "Keplar ${TAG}" \
+              --title "Keplar One ${TAG}" \
               --generate-notes
           fi
           gh release view "${TAG}" --json url,assets --jq '{url: .url, assets: [.assets[].name]}'

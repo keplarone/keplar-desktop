@@ -1,7 +1,7 @@
 appId: one.keplar.desktop
-productName: Keplar
-copyright: Copyright © Keplar
-artifactName: Keplar-${version}-${os}-${arch}.${ext}
+productName: Keplar One
+copyright: Copyright © Keplar One
+artifactName: Keplar-One-${version}-${os}-${arch}.${ext}
 directories:
   output: release
   buildResources: build
@@ -14,7 +14,7 @@ extraResources:
     to: icon.png
 asar: true
 protocols:
-  - name: Keplar
+  - name: Keplar One
     schemes:
       - keplar
 publish:
@@ -38,7 +38,7 @@ mac:
         - x64
         - arm64
   extendInfo:
-    NSMicrophoneUsageDescription: Keplar uses the microphone when you choose voice input on keplar.one. This app does not record or store audio itself.
+    NSMicrophoneUsageDescription: Keplar One uses the microphone when you choose voice input on keplar.one. This app does not record or store audio itself.
 win:
   icon: build/icon.ico
   target:
@@ -49,12 +49,12 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  shortcutName: Keplar
-  uninstallDisplayName: Keplar
+  shortcutName: Keplar One
+  uninstallDisplayName: Keplar One
 linux:
   icon: build/icons
   category: Utility
-  executableName: keplar
+  executableName: keplar-one
   syncDesktopName: true
   synopsis: One question. Multiple intelligences. One answer.
   maintainer: Keplar <team@keplar.one>

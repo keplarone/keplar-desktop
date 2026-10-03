@@ -1,6 +1,6 @@
-# Keplar for desktop
+# Keplar One for desktop
 
-Keplar is a window onto [keplar.one](https://keplar.one).
+Keplar One is a window onto [keplar.one](https://keplar.one).
 
 One question. Multiple intelligences. One answer.
 
@@ -12,6 +12,8 @@ Sign-in, questions, and answers stay on Keplar's servers. This app does not keep
 | macOS | `~/Library/Application Support/Keplar` |
 | Linux | `~/.config/Keplar` |
 
+The folder stays `Keplar` so an update from an earlier build keeps you signed in. The name you see in the dock, taskbar, and installer is Keplar One.
+
 If that folder is not there, look for `keplar-desktop` next to it. Removing it signs you out on this computer. Uninstalling the app does not always remove it.
 
 ## Install
@@ -22,7 +24,7 @@ Each release includes `SHA256SUMS`. Check a download with `sha256sum -c SHA256SU
 
 ### Windows
 
-File: `Keplar-<version>-win-x64.exe`
+File: `Keplar-One-<version>-win-x64.exe`
 
 The installer is an NSIS setup wizard for 64-bit Windows. It is a per-user install unless you change that in the wizard.
 
@@ -32,15 +34,15 @@ SmartScreen will say it prevented an unrecognized app from starting. Choose **Mo
 
 Files:
 
-- `Keplar-<version>-mac-arm64.dmg` for Apple silicon
-- `Keplar-<version>-mac-x64.dmg` for Intel Macs
+- `Keplar-One-<version>-mac-arm64.dmg` for Apple silicon
+- `Keplar-One-<version>-mac-x64.dmg` for Intel Macs
 
-The `.zip` files next to them are what auto-update uses. Install from the `.dmg`: open it and drag Keplar to Applications.
+The `.zip` files next to them are what auto-update uses. Install from the `.dmg`: open it and drag Keplar One to Applications.
 
 Gatekeeper will say the app cannot be opened because the developer cannot be verified, or that it is damaged. Either of these works:
 
-- Right-click `Keplar.app`, choose **Open**, then **Open** again.
-- Or, in Terminal: `xattr -cr /Applications/Keplar.app` and open the app again.
+- Right-click `Keplar One.app`, choose **Open**, then **Open** again.
+- Or, in Terminal: `xattr -cr "/Applications/Keplar One.app"` and open the app again.
 
 macOS auto-update only works after the app is code-signed and notarized. An unsigned copy will not replace itself. Download the next `.dmg` instead. See [Updates](#updates).
 
@@ -48,28 +50,28 @@ macOS auto-update only works after the app is code-signed and notarized. An unsi
 
 Files, all x64:
 
-- `Keplar-<version>-linux-x86_64.AppImage`
-- `Keplar-<version>-linux-amd64.deb`
-- `Keplar-<version>-linux-x86_64.rpm`
+- `Keplar-One-<version>-linux-x86_64.AppImage`
+- `Keplar-One-<version>-linux-amd64.deb`
+- `Keplar-One-<version>-linux-x86_64.rpm`
 
 `x86_64` and `amd64` are the same CPU. The names follow the usual names for AppImage, deb, and rpm.
 
 AppImage:
 
 ```bash
-chmod +x Keplar-*-linux-x86_64.AppImage
-./Keplar-*-linux-x86_64.AppImage
+chmod +x Keplar-One-*-linux-x86_64.AppImage
+./Keplar-One-*-linux-x86_64.AppImage
 ```
 
-Debian or Ubuntu: `sudo apt install ./Keplar-*-linux-amd64.deb`
+Debian or Ubuntu: `sudo apt install ./Keplar-One-*-linux-amd64.deb`
 
-Fedora or RHEL: `sudo rpm -i Keplar-*-linux-x86_64.rpm` (or `sudo dnf install ./Keplar-*-linux-x86_64.rpm`)
+Fedora or RHEL: `sudo rpm -i Keplar-One-*-linux-x86_64.rpm` (or `sudo dnf install ./Keplar-One-*-linux-x86_64.rpm`)
 
 Auto-update applies to the AppImage. deb and rpm installs are updated by installing the next package.
 
 ## Updates
 
-Installed builds check [GitHub Releases](https://github.com/keplarone/keplar-desktop/releases) for a newer version and can download it in the background. **Help → Check for Updates…** checks immediately. You can restart when a download finishes, or quit later and let it install then.
+Installed builds check [GitHub Releases](https://github.com/keplarone/keplar-desktop/releases) for a newer version and can download it in the background. There is no menu item for it. You can restart when a download finishes, or quit later and let it install then. The app id stays `one.keplar.desktop`, so an install of an earlier build can still take this update. The files it downloads use the `Keplar-One-` names in `latest.yml`, `latest-mac.yml`, and `latest-linux.yml`.
 
 macOS will install that update only when the app is signed. Windows and the Linux AppImage can update without a certificate. Windows SmartScreen may warn again on the new installer.
 
@@ -95,7 +97,7 @@ npm run dist
 
 Installers are written to `release/`. A full matrix (Windows NSIS, macOS dmg and zip for x64 and arm64, Linux AppImage, deb, and rpm) is built by the release workflow, not by one machine.
 
-Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Keplar mark on white: a black rounded square, a black rounded right triangle, and a black circle.
+Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Keplar mark with a transparent background: a black rounded square, a black rounded right triangle, and a black circle. The packaged PNG, ICO, and ICNS keep that transparency and add a thin white rim so the mark stays visible on a dark dock or taskbar and still reads as black on a light one.
 
 ## Cut a release
 
@@ -104,8 +106,8 @@ Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Kep
 3. Tag that commit with the same version and push the tag:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 4. The **Release** workflow runs on `windows-latest`, `macos-latest`, and `ubuntu-latest`, builds the installers, writes `SHA256SUMS`, and publishes a GitHub Release for that tag with generated notes. It also uploads `latest.yml`, `latest-mac.yml`, and `latest-linux.yml`, which `electron-updater` reads.
@@ -132,7 +134,9 @@ Notarization needs the Apple secrets and a Developer ID certificate in `CSC_LINK
 
 ## What the app allows
 
-The main window loads `https://keplar.one` only, including subdomains, and only over HTTPS. `keplar://` links open the matching path on that site (`keplar://app/chat` opens `https://keplar.one/app/chat`).
+The window has no File, Edit, View, Window, or Help bar. On Windows and Linux the application menu is removed. On macOS the system menu bar keeps About, Hide, Quit, and Edit so Command-C, Command-V, and Command-Q keep working. Reload is Ctrl+R or F5 (Command-R on macOS). Zoom is Ctrl or Command with plus, minus, or 0. Full screen is F11, or Control-Command-F on macOS. Developer tools stay off in an installed build.
+
+The main window loads `https://keplar.one` only, including subdomains, and only over HTTPS. `keplar://` links open the matching path on that site (`keplar://app/chat` opens `https://keplar.one/app/chat`). The window title stays Keplar One, including when the site says Ask Keplar.
 
 Google, Microsoft, and Whop sign-in and checkout open in a separate window limited to those providers, then return to Keplar. Other links open in your default browser. Permission prompts are denied except the microphone (voice input) and notifications, and only when the request comes from `keplar.one`. There is no Node.js in the page, no preload API, and no webview.
 

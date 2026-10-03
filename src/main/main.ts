@@ -1,3 +1,4 @@
+import path from "node:path";
 import { app } from "electron";
 import { installMenu } from "./menu";
 import {
@@ -5,14 +6,14 @@ import {
   createMainWindow,
   focusMain,
   getMainWindow,
-  goBack,
-  goForward,
   openDeepLink,
-  reloadMain,
   rememberDeepLink,
   takeInitialUrl,
 } from "./shell";
-import { checkForUpdates, setupAutoUpdater } from "./updater";
+import { setupAutoUpdater } from "./updater";
+
+// Keep the session folder from before the display name became Keplar One.
+app.setPath("userData", path.join(app.getPath("appData"), "Keplar"));
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
@@ -39,15 +40,7 @@ if (!gotSingleInstanceLock) {
     }
 
     configureSession();
-    installMenu({
-      getWindow: getMainWindow,
-      reload: reloadMain,
-      goBack,
-      goForward,
-      checkForUpdates: () => {
-        void checkForUpdates(true);
-      },
-    });
+    installMenu();
 
     const initialUrl = takeInitialUrl(process.argv);
     await createMainWindow(initialUrl);

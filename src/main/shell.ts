@@ -10,6 +10,8 @@ import {
 } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { APP_TITLE, mainWindowChrome, windowDragCss } from "./chrome";
+import { bindAccelerators } from "./menu";
 import {
   APP_URL,
   classifyNavigation,
@@ -75,16 +77,6 @@ export function reloadMain(): void {
   void loadApp(currentTarget);
 }
 
-export function goBack(): void {
-  const contents = getMainWindow()?.webContents;
-  if (contents?.canGoBack()) contents.goBack();
-}
-
-export function goForward(): void {
-  const contents = getMainWindow()?.webContents;
-  if (contents?.canGoForward()) contents.goForward();
-}
-
 export function openDeepLink(raw: string): void {
   const target = deepLinkToAppUrl(raw);
   if (!target) {
@@ -115,9 +107,7 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
     minWidth: windowMinimums.minWidth,
     minHeight: windowMinimums.minHeight,
     show: false,
-    title: "Keplar",
-    backgroundColor: "#ffffff",
-    autoHideMenuBar: false,
+    ...mainWindowChrome(process.platform),
     webPreferences: hardenedWebPreferences(),
   };
   if (state.x !== undefined && state.y !== undefined) {
@@ -130,6 +120,17 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   mainWindow = win;
   mainWebContentsId = win.webContents.id;
   trackWindowState(win);
+  bindAccelerators(win, { reload: reloadMain });
+  win.setTitle(APP_TITLE);
+  win.on("page-title-updated", (event) => {
+    event.preventDefault();
+    if (!win.isDestroyed()) win.setTitle(APP_TITLE);
+  });
+  win.webContents.on("dom-ready", () => {
+    if (win.isDestroyed()) return;
+    void win.webContents.insertCSS(windowDragCss(process.platform));
+    win.setTitle(APP_TITLE);
+  });
 
   win.on("closed", () => {
     if (mainWindow === win) {
@@ -346,6 +347,7 @@ function handleNavigation(
 function openAuthWindow(url: string): void {
   if (!authWindow || authWindow.isDestroyed()) {
     authWindow = new BrowserWindow(authWindowOptions());
+    authWindow.setMenu(null);
     authWindow.setMenuBarVisibility(false);
     authWindow.on("closed", () => {
       authWindow = null;
@@ -363,8 +365,8 @@ function authWindowOptions(): BrowserWindowConstructorOptions {
     width: 480,
     height: 720,
     show: true,
-    autoHideMenuBar: true,
-    title: "Sign in — Keplar",
+    autoHideMenuBar: false,
+    title: `Sign in — ${APP_TITLE}`,
     backgroundColor: "#ffffff",
     webPreferences: hardenedWebPreferences(),
   };

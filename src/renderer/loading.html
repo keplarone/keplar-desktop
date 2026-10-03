@@ -7,10 +7,11 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
     />
-    <title>Keplar</title>
+    <title>Keplar One</title>
     <style>
       :root {
-        color-scheme: light;
+        color-scheme: dark;
+        --keplar-titlebar: 36px;
       }
       * {
         box-sizing: border-box;
@@ -19,13 +20,23 @@
       body {
         height: 100%;
         margin: 0;
-        background: #ffffff;
+        background: #0b0b0d;
       }
       body {
-        color: #0a0a0a;
+        color: #f4f4f5;
         font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
         display: grid;
         place-items: center;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        z-index: 2;
+        top: 0;
+        left: 0;
+        right: 140px;
+        height: var(--keplar-titlebar);
+        -webkit-app-region: drag;
       }
       main {
         text-align: center;
@@ -45,7 +56,7 @@
       }
       p {
         margin: 0;
-        color: #3f3f3f;
+        color: #a1a1aa;
         font-size: 15px;
         line-height: 1.45;
       }
@@ -53,7 +64,7 @@
         margin: 28px auto 0;
         width: 128px;
         height: 2px;
-        background: #ececec;
+        background: #27272a;
         overflow: hidden;
         border-radius: 2px;
       }
@@ -61,7 +72,7 @@
         display: block;
         height: 100%;
         width: 40%;
-        background: #0a0a0a;
+        background: #f4f4f5;
         animation: slide 1.1s ease-in-out infinite;
       }
       @keyframes slide {
@@ -84,15 +95,15 @@
   <body>
     <main>
       <svg viewBox="0 0 512 512" aria-hidden="true">
-        <g fill="#000000" transform="translate(41 41) scale(1.0723192) translate(-76 -76)">
+        <g fill="#ffffff" transform="translate(41 41) scale(1.0723192) translate(-76 -76)">
           <rect x="76" y="76" width="232" height="232" rx="74" />
           <path d="M295 76h143c11 0 18 7 18 18v151c0 8-4 12-9 9L283 92c-8-8-2-16 12-16Z" />
           <circle cx="358" cy="358" r="119" />
         </g>
       </svg>
-      <h1>Keplar</h1>
+      <h1>Keplar One</h1>
       <p>One question. Multiple intelligences. One answer.</p>
-      <div class="bar" role="progressbar" aria-label="Opening Keplar">
+      <div class="bar" role="progressbar" aria-label="Opening Keplar One">
         <span></span>
       </div>
     </main>

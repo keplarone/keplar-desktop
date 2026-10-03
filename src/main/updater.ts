@@ -36,8 +36,8 @@ export function setupAutoUpdater(getWindow: () => BrowserWindow | null): void {
       buttons: ["Restart now", "Later"],
       defaultId: 0,
       cancelId: 1,
-      title: "Update Keplar",
-      message: "An update to Keplar has been downloaded.",
+      title: "Update Keplar One",
+      message: "An update to Keplar One has been downloaded.",
       detail,
     };
     const parent = getWindow();
@@ -58,7 +58,7 @@ export async function checkForUpdates(interactive: boolean): Promise<void> {
     if (interactive) {
       await dialog.showMessageBox({
         type: "info",
-        title: "Keplar",
+        title: "Keplar One",
         message: "Updates are checked from installed builds.",
         detail:
           "This copy is running from source, so there is no published release to compare it with.",
@@ -74,16 +74,16 @@ export async function checkForUpdates(interactive: boolean): Promise<void> {
     if (interactive && result && !result.isUpdateAvailable) {
       await dialog.showMessageBox({
         type: "info",
-        title: "Keplar",
+        title: "Keplar One",
         message: "You're up to date.",
-        detail: `Keplar ${app.getVersion()} is the newest release this app could find.`,
+        detail: `Keplar One ${app.getVersion()} is the newest release this app could find.`,
       });
     }
   } catch {
     if (interactive) {
       await dialog.showMessageBox({
         type: "warning",
-        title: "Keplar",
+        title: "Keplar One",
         message: "Couldn't check for updates.",
         detail:
           "The app will try again the next time it starts, if it can reach GitHub.",
