@@ -70,6 +70,10 @@ export function windowDragCss(): string {
     }
     :is(a, button, input, textarea, select, summary, label, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [contenteditable="true"]) {
       -webkit-app-region: no-drag;
+    }
+    /* Raise controls above the drag layer, but with zero specificity (:where): a site rule such as .jump { position: absolute }
+       must win. Before 0.1.5 this forced position: relative onto every button and link and broke floating buttons. */
+    :where(a, button, input, textarea, select, summary, label, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [contenteditable="true"]) {
       position: relative;
       z-index: 2;
     }

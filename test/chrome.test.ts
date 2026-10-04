@@ -30,3 +30,12 @@ test("hidden title bar uses a dark overlay and a drag strip", () => {
   assert.doesNotMatch(css, /#main/);
   assert.match(css, new RegExp(CHROME_COLOR));
 });
+
+test("controls are raised with zero specificity so a site's own position (for example a floating button) wins", () => {
+  const css = windowDragCss();
+  assert.match(css, /:where\(a, button[^)]*\)\s*\{\s*position: relative;\s*z-index: 2;/);
+  // the no-drag rule itself must not carry position
+  const noDrag = css.match(/:is\(a, button[^{]*\{([^}]*)\}/);
+  assert.ok(noDrag);
+  assert.doesNotMatch(noDrag[1], /position/);
+});

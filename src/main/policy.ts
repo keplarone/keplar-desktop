@@ -79,6 +79,8 @@ export function deepLinkToAppUrl(raw: string): string | null {
   }
   if (url.protocol !== "keplar:") return null;
   if (url.username || url.password) return null;
+  // keplar://auth?code=...&rid=... is the sign-in handoff (desktop-auth.ts), never a page.
+  if (url.hostname.toLowerCase() === "auth") return null;
 
   let path = url.pathname || "/";
   if (url.hostname) {

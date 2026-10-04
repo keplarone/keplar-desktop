@@ -94,3 +94,12 @@ describe("subframes", () => {
     assert.equal(isAllowedSubframeUrl("javascript:alert(1)"), false);
   });
 });
+
+describe("sign-in handoff links", () => {
+  it("keplar://auth is never mapped onto a web page", () => {
+    assert.equal(deepLinkToAppUrl("keplar://auth?code=x&rid=y"), null);
+    assert.equal(deepLinkToAppUrl("keplar://AUTH?code=x&rid=y"), null);
+    assert.equal(classifyNavigation("keplar://auth?code=x&rid=y"), "blocked");
+    assert.equal(deepLinkToAppUrl("keplar://app/chat"), "https://keplar.one/app/chat");
+  });
+});

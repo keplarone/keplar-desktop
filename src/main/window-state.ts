@@ -1,6 +1,7 @@
 import { app, screen, type BrowserWindow, type Rectangle } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { fitSizeToWorkArea, fitToWorkArea } from "./bounds";
 
 export interface WindowState {
   width: number;
@@ -124,11 +125,16 @@ function sanitize(value: unknown): WindowState | null {
 
   const x = typeof record.x === "number" ? record.x : undefined;
   const y = typeof record.y === "number" ? record.y : undefined;
-  if (x === undefined || y === undefined) return state;
-  if (!onSomeDisplay({ x, y, width, height })) return state;
+  if (x === undefined || y === undefined) return limitToPrimary(state);
+  const area = displayFor({ x, y, width, height });
+  if (!area) return limitToPrimary(state);
 
-  state.x = x;
-  state.y = y;
+  // Keep the whole window inside the usable screen (above the taskbar), not just its top-left corner.
+  const fitted = fitToWorkArea({ x, y, width, height }, area);
+  state.width = Math.max(Math.min(fitted.width, state.width), Math.min(MIN_WIDTH, area.width));
+  state.height = Math.max(Math.min(fitted.height, state.height), Math.min(MIN_HEIGHT, area.height));
+  state.x = fitted.x;
+  state.y = fitted.y;
   return state;
 }
 
@@ -138,16 +144,19 @@ function finiteInRange(value: unknown, min: number, max: number): number | null 
   return Math.round(value);
 }
 
-function onSomeDisplay(bounds: Rectangle): boolean {
-  return screen.getAllDisplays().some((display) => {
+function limitToPrimary(state: WindowState): WindowState {
+  const size = fitSizeToWorkArea(state, screen.getPrimaryDisplay().workArea);
+  state.width = size.width;
+  state.height = size.height;
+  return state;
+}
+
+function displayFor(bounds: Rectangle): Rectangle | null {
+  for (const display of screen.getAllDisplays()) {
     const area = display.workArea;
     const centerX = bounds.x + Math.min(bounds.width, 80);
     const centerY = bounds.y + 20;
-    return (
-      centerX >= area.x &&
-      centerX < area.x + area.width &&
-      centerY >= area.y &&
-      centerY < area.y + area.height
-    );
-  });
+    if (centerX >= area.x && centerX < area.x + area.width && centerY >= area.y && centerY < area.y + area.height) return area;
+  }
+  return null;
 }

@@ -28,6 +28,8 @@ import {
   isSafeExternalUrl,
   urlForLog,
 } from "./policy";
+import { isAuthDeepLink, signInIntent } from "./desktop-auth";
+import { clearFinishing, handleAuthLink, initSignIn, isFinishingSignIn, startSignIn } from "./signin-window";
 import { desktopUserAgent } from "./user-agent";
 import {
   captureFrameForFullscreen,
@@ -54,6 +56,8 @@ export function getMainWindow(): BrowserWindow | null {
 }
 
 export function rememberDeepLink(raw: string): void {
+  // A sign-in handoff that arrives before any sign-in was started has nothing to finish; the window just opens.
+  if (isAuthDeepLink(raw)) return;
   const target = deepLinkToAppUrl(raw);
   if (!target) {
     console.warn("Ignored deep link", urlForLog(raw));
@@ -120,6 +124,10 @@ export function reloadMain(): void {
 }
 
 export function openDeepLink(raw: string): void {
+  if (isAuthDeepLink(raw)) {
+    handleAuthLink(raw);
+    return;
+  }
   const target = deepLinkToAppUrl(raw);
   if (!target) {
     console.warn("Ignored deep link", urlForLog(raw));
@@ -207,6 +215,7 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
     if (win.isDestroyed()) return;
     const current = win.webContents.getURL();
     if (classifyNavigation(current) === "app") showingOffline = false;
+    if (!current.includes("/api/auth/desktop/finish")) clearFinishing();
   });
 
   win.webContents.on("render-process-gone", (_event, details) => {
@@ -215,6 +224,7 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
     void showOffline();
   });
 
+  initSignIn({ getMainWindow, loadFinish: (url) => void loadApp(url) });
   currentTarget = initialUrl;
   await win.loadFile(loadingFile());
   if (win.isDestroyed()) return;
@@ -253,6 +263,13 @@ export function configureSession(): void {
 async function loadApp(url: string): Promise<void> {
   const win = getMainWindow();
   if (!win) return;
+  // Sign in, sign up and Add account happen in the system browser, never in this window.
+  const intent = isFinishingSignIn() ? null : signInIntent(url);
+  if (intent) {
+    startSignIn(intent);
+    if (win.webContents.getURL().startsWith("https:")) return;
+    url = APP_URL;
+  }
   currentTarget = url;
   showingOffline = false;
   try {
@@ -360,6 +377,14 @@ function handleNavigation(
   }
 
   const kind = classifyNavigation(rawUrl);
+  if (kind === "app" && contents.id === mainWebContentsId && !isFinishingSignIn()) {
+    const intent = signInIntent(rawUrl);
+    if (intent) {
+      event.preventDefault();
+      startSignIn(intent);
+      return;
+    }
+  }
   if (kind === "app") {
     const resolved = resolveAppUrl(rawUrl);
     if (!resolved) {

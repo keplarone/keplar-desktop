@@ -69,6 +69,18 @@ Fedora or RHEL: `sudo rpm -i Keplar-One-*-linux-x86_64.rpm` (or `sudo dnf instal
 
 Auto-update applies to the AppImage. deb and rpm installs are updated by installing the next package.
 
+## Signing in
+
+Sign in, Sign up and Add account open your default browser. The app never shows a login form of its own, so Google, Microsoft, e-mail sign-in and magic links work exactly as they do on the website, including password managers and passkeys.
+
+1. In the app, choose **Sign in** (or **Add account**). A small window says it is waiting for your browser and shows a short code such as `K7F-2QM`.
+2. Your browser opens a Keplar page with the same code. Sign in there, then choose **Connect Keplar One**. (**Use a different account** switches account first; **This wasn't me** stops it.)
+3. The browser hands a one-time code back to the app through the `keplar://auth` link, and the app signs in.
+
+If the system does not pass the `keplar://` link to the app, the app notices the approval on its own within a few seconds. **Cancel** (or closing the small window) stops the request, and the browser page stops working.
+
+How it is kept safe: the app makes a random secret that never leaves it and sends only its SHA-256 hash (PKCE). The one-time code in the link is useless without that secret, works once, and expires after 2 minutes; the whole request expires after 10 minutes. After an exchange the app loads a single-use ticket URL in its own window, which is how the session cookie ends up in the app and not in the browser.
+
 ## Updates
 
 Installed builds check [GitHub Releases](https://github.com/keplarone/keplar-desktop/releases) for a newer version and can download it in the background. There is no menu item for it. You can restart when a download finishes, or quit later and let it install then. The app id stays `one.keplar.desktop`, so an install of an earlier build can still take this update. The files it downloads use the `Keplar-One-` names in `latest.yml`, `latest-mac.yml`, and `latest-linux.yml`.
@@ -106,8 +118,8 @@ Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Kep
 3. Tag that commit with the same version and push the tag:
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.5
+git push origin v0.1.5
 ```
 
 4. The **Release** workflow runs on `windows-latest`, `macos-latest`, and `ubuntu-latest`, builds the installers, writes `SHA256SUMS`, and publishes a GitHub Release for that tag with generated notes. It also uploads `latest.yml`, `latest-mac.yml`, and `latest-linux.yml`, which `electron-updater` reads.

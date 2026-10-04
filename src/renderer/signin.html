@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
+    />
+    <title>Keplar One</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; background: #0b0b0d; }
+      body {
+        color: #f4f4f5;
+        font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        display: grid;
+        place-items: center;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      main { width: min(380px, 100%); padding: 28px 24px; text-align: center; }
+      .orb {
+        width: 56px; height: 56px; margin: 0 auto 20px; border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #ffffff, #bdbdc2 45%, #3a3a40 100%);
+        box-shadow: 0 0 36px rgba(255, 255, 255, 0.28);
+        animation: breathe 2.8s ease-in-out infinite;
+      }
+      main[data-phase="error"] .orb { animation: none; opacity: 0.55; box-shadow: none; }
+      main[data-phase="finishing"] .orb { animation-duration: 1.2s; }
+      @keyframes breathe { 50% { transform: scale(1.08); box-shadow: 0 0 52px rgba(255, 255, 255, 0.42); } }
+      @media (prefers-reduced-motion: reduce) { .orb { animation: none; } }
+      h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 10px; }
+      p { margin: 0; color: #a1a1aa; font-size: 14px; line-height: 1.5; }
+      .code {
+        display: none; margin: 18px auto 0; padding: 10px 18px; width: max-content;
+        border: 1px solid #3f3f46; border-radius: 999px; background: #111114;
+        font: 600 22px/1.1 "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace; letter-spacing: 0.14em; color: #fff;
+      }
+      main[data-has-code] .code { display: block; }
+      .actions { display: flex; gap: 10px; justify-content: center; margin-top: 24px; }
+      button {
+        font: 500 14px "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        padding: 9px 18px; border-radius: 999px; cursor: pointer;
+        border: 1px solid #3f3f46; background: transparent; color: #f4f4f5;
+      }
+      button:hover { background: #1b1b1f; }
+      button:focus-visible { outline: 2px solid #f4f4f5; outline-offset: 2px; }
+      button[data-primary] { background: #f4f4f5; color: #0b0b0d; border-color: #f4f4f5; }
+      button[data-primary]:hover { background: #ffffff; }
+    </style>
+  </head>
+  <body>
+    <main data-phase="starting" role="dialog" aria-labelledby="t" aria-describedby="m">
+      <div class="orb" aria-hidden="true"></div>
+      <h1 id="t">Sign in</h1>
+      <p id="m" aria-live="polite">Opening your browser…</p>
+      <div class="code" id="c" aria-label="Sign-in code"></div>
+      <div class="actions" id="a"></div>
+    </main>
+  </body>
+</html>
