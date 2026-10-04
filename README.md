@@ -97,7 +97,7 @@ npm run dist
 
 Installers are written to `release/`. A full matrix (Windows NSIS, macOS dmg and zip for x64 and arm64, Linux AppImage, deb, and rpm) is built by the release workflow, not by one machine.
 
-Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Keplar mark with a transparent background: a black rounded square, a black rounded right triangle, and a black circle. The packaged PNG, ICO, and ICNS keep that transparency and add a thin white rim so the mark stays visible on a dark dock or taskbar and still reads as black on a light one.
+Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Keplar mark with a transparent background: a black rounded square, a black rounded right triangle, and a black circle. The packaged PNG, ICO, and ICNS put that black mark on a light rounded tile with a transparent surround and no outline or glow. A bare black mark disappears on a dark taskbar or dock, and the tile keeps it visible on dark and light ones alike. `npm run icons -- --transparent` writes the bare black mark with no tile instead.
 
 ## Cut a release
 

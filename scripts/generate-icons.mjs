@@ -11,34 +11,42 @@ const buildDir = path.join(root, "build");
 fs.mkdirSync(buildDir, { recursive: true });
 
 const size = 1024;
-// Wide enough that a 16px and 32px icon still shows a light edge on a dark taskbar.
-const rim = 56;
-const rendered = await sharp(svg).resize(size, size).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-const halo = dilateAlpha(rendered.data, rendered.info.width, rendered.info.height, rim);
-const out = Buffer.alloc(rendered.data.length);
-for (let i = 0, pixel = 0; i < rendered.data.length; i += 4, pixel++) {
-  const alpha = rendered.data[i + 3];
-  if (alpha > 16) {
-    out[i] = rendered.data[i];
-    out[i + 1] = rendered.data[i + 1];
-    out[i + 2] = rendered.data[i + 2];
-    out[i + 3] = alpha;
-    continue;
+// The mark is black on a light rounded tile, so it reads on dark and light taskbars, docks and
+// launchers without any outline or glow. Pass --transparent for the bare black mark with no tile.
+const bare = process.argv.includes("--transparent");
+const TILE = "#f4f4f6";
+// Share of the canvas the tile covers: Windows and Linux icons fill their slot; macOS uses the
+// Big Sur template (824 of 1024) so the Dock does not show it larger than its neighbours.
+const TILE_SHARE = { plain: 0.94, mac: 824 / 1024 };
+// The mark's share of the tile (the svg already has its own margin inside its 512 box).
+const MARK_SHARE = 0.72;
+
+async function render(tileShare) {
+  const markSize = Math.round(size * (bare ? 1 : tileShare * MARK_SHARE));
+  const mark = await sharp(svg).resize(markSize, markSize).png().toBuffer();
+  const layers = [];
+  if (!bare) {
+    const tile = Math.round(size * tileShare);
+    const radius = Math.round(tile * 0.2237);
+    const plate = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${tile}" height="${tile}"><rect width="${tile}" height="${tile}" rx="${radius}" fill="${TILE}"/></svg>`,
+    );
+    const off = Math.round((size - tile) / 2);
+    layers.push({ input: plate, left: off, top: off });
   }
-  const edge = halo[pixel];
-  if (edge > 128) {
-    out[i] = 255;
-    out[i + 1] = 255;
-    out[i + 2] = 255;
-    out[i + 3] = 255;
-  }
+  const off = Math.round((size - markSize) / 2);
+  layers.push({ input: mark, left: off, top: off });
+  return sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite(layers)
+    .png()
+    .toBuffer();
 }
 
-const pngPath = path.join(buildDir, "icon.png");
-await sharp(out, { raw: { width: size, height: size, channels: 4 } }).png().toFile(pngPath);
-const png = fs.readFileSync(pngPath);
+const png = await render(TILE_SHARE.plain);
+const macPng = await render(TILE_SHARE.mac);
+fs.writeFileSync(path.join(buildDir, "icon.png"), png);
 
-const icns = png2icons.createICNS(png, png2icons.BILINEAR, 0);
+const icns = png2icons.createICNS(macPng, png2icons.BILINEAR, 0);
 const ico = png2icons.createICO(png, png2icons.BILINEAR, 0, true, true);
 if (!icns || !ico) {
   throw new Error("Icon conversion failed");
@@ -53,38 +61,3 @@ for (const edge of [16, 24, 32, 48, 64, 128, 256, 512, 1024]) {
 }
 
 console.log("Wrote build/icon.png, build/icon.ico, build/icon.icns, and build/icons/");
-
-function dilateAlpha(data, width, height, radius) {
-  const alpha = new Uint8Array(width * height);
-  for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3] ?? 0;
-  const horizontal = maxPass(alpha, width, height, radius, true);
-  return maxPass(horizontal, width, height, radius, false);
-}
-
-function maxPass(source, width, height, radius, horizontal) {
-  const out = new Uint8Array(source.length);
-  const limit = horizontal ? width : height;
-  const lines = horizontal ? height : width;
-  for (let line = 0; line < lines; line++) {
-    const deque = new Int32Array(limit);
-    let head = 0;
-    let tail = 0;
-    for (let i = 0; i < limit + radius; i++) {
-      if (i < limit) {
-        const value = source[horizontal ? line * width + i : i * width + line];
-        while (tail > head && sourceAt(source, width, horizontal, line, deque[tail - 1]) <= value) tail--;
-        deque[tail++] = i;
-      }
-      const ready = i - radius;
-      if (ready < 0) continue;
-      while (tail > head && deque[head] < ready - radius) head++;
-      out[horizontal ? line * width + ready : ready * width + line] =
-        sourceAt(source, width, horizontal, line, deque[head] ?? ready);
-    }
-  }
-  return out;
-}
-
-function sourceAt(source, width, horizontal, line, index) {
-  return source[horizontal ? line * width + index : index * width + line] ?? 0;
-}
