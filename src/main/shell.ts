@@ -26,10 +26,12 @@ import {
   isAllowedSubframeUrl,
   isKeplarAppUrl,
   isSafeExternalUrl,
+  legacyAppFallback,
   urlForLog,
 } from "./policy";
 import { isAuthDeepLink, signInIntent } from "./desktop-auth";
 import { clearFinishing, handleAuthLink, initSignIn, isFinishingSignIn, startSignIn } from "./signin-window";
+import { documentCommitted, HEALTH_URL, healthSaysUp, reachabilityAction, type LoadFailure } from "./reachability";
 import { desktopUserAgent } from "./user-agent";
 import {
   captureFrameForFullscreen,
@@ -46,6 +48,17 @@ let authWindow: BrowserWindow | null = null;
 let guardsInstalled = false;
 let showingOffline = false;
 let currentTarget = APP_URL;
+let loadGeneration = 0;
+let failureHandledFor = -1;
+let recoveryTried = false;
+/**
+ * True only after `did-navigate` commits a hosted document with an HTTP status.
+ * `webContents.getURL()` stays on the requested https URL when DNS fails, so it
+ * cannot tell an error document from the app.
+ */
+let appShown = false;
+/** Stops `/app` → 308 → `/app/ask` from bouncing when the ask tab is an HTTP error. */
+let usedLegacyAppUrl = false;
 let pendingDeepLink: string | null = null;
 let lastExternal = { url: "", at: 0 };
 let handoffGeneration = 0;
@@ -197,36 +210,75 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
     win.show();
   });
 
+  win.webContents.on("did-start-navigation", (details) => {
+    if (!details.isMainFrame || details.isSameDocument) return;
+    if (isHostedAppUrl(details.url)) {
+      appShown = false;
+      showingOffline = false;
+      // A new document attempt (including Try again) is not the failure already handled.
+      failureHandledFor = -1;
+    }
+  });
+
+  win.webContents.on("did-navigate", (_event, url, httpResponseCode) => {
+    if (documentCommitted(url, httpResponseCode)) {
+      appShown = true;
+      usedLegacyAppUrl = false;
+      return;
+    }
+    const fallback = legacyAppFallback(url, httpResponseCode, usedLegacyAppUrl);
+    if (!fallback) return;
+    usedLegacyAppUrl = true;
+    console.warn("Ask page was not available", httpResponseCode, urlForLog(url), "loading /app");
+    void loadApp(fallback);
+  });
+
   win.webContents.on(
     "did-fail-load",
     (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-      if (!isMainFrame || errorCode === -3) return;
-      console.warn(
-        "Page failed to load",
-        errorCode,
-        errorDescription,
-        urlForLog(validatedURL),
+      void onAppLoadFailed(
+        loadGeneration,
+        { errorCode, isMainFrame, validatedURL },
+        `${errorDescription}`,
+        appDocumentVisible(),
       );
-      void showOffline();
     },
   );
 
   win.webContents.on("did-finish-load", () => {
     if (win.isDestroyed()) return;
     const current = win.webContents.getURL();
-    if (classifyNavigation(current) === "app") showingOffline = false;
+    if (appShown) {
+      showingOffline = false;
+      recoveryTried = false;
+    }
     if (!current.includes("/api/auth/desktop/finish")) clearFinishing();
   });
 
   win.webContents.on("render-process-gone", (_event, details) => {
     if (details.reason === "clean-exit") return;
     console.error("Renderer stopped", details.reason);
-    void showOffline();
+    // The crashed document's URL can still be keplar.one. That is a dead
+    // renderer, not proof the page is on screen, so recover from it.
+    appShown = false;
+    void onAppLoadFailed(
+      loadGeneration,
+      { errorCode: -2, isMainFrame: true, validatedURL: currentTarget },
+      details.reason,
+      false,
+    );
   });
 
   initSignIn({ getMainWindow, loadFinish: (url) => void loadApp(url) });
   currentTarget = initialUrl;
-  await win.loadFile(loadingFile());
+  // The opening screen is local. A failure there (packaged path, sandbox, or
+  // Windows reporting the file load as ERR_FAILED when the https load starts)
+  // must not be treated as keplar.one being down, and must not skip the load.
+  try {
+    await win.loadFile(loadingFile());
+  } catch (error) {
+    console.warn("Could not show the opening screen", error);
+  }
   if (win.isDestroyed()) return;
   void loadApp(initialUrl);
 }
@@ -271,18 +323,93 @@ async function loadApp(url: string): Promise<void> {
     url = APP_URL;
   }
   currentTarget = url;
+  const generation = ++loadGeneration;
   showingOffline = false;
+  if (isHostedAppUrl(url)) appShown = false;
   try {
     await win.loadURL(url);
   } catch (error) {
-    console.error("Load failed", urlForLog(url), error);
-    await showOffline();
+    await onAppLoadFailed(
+      generation,
+      { errorCode: errnoOf(error), isMainFrame: true, validatedURL: url },
+      error instanceof Error ? error.message : "load failed",
+      appDocumentVisible(),
+    );
   }
 }
 
-async function showOffline(): Promise<void> {
+async function onAppLoadFailed(
+  generation: number,
+  failure: LoadFailure,
+  description: string,
+  appVisible: boolean,
+): Promise<void> {
+  if (generation !== loadGeneration) return;
+  if (
+    reachabilityAction({ failure, health: "unknown", retried: recoveryTried, appVisible }) === "ignore"
+  ) {
+    return;
+  }
+  if (failureHandledFor === generation) return;
+  failureHandledFor = generation;
+
+  const up = await probeHealth();
+  if (generation !== loadGeneration) return;
+  const visible = appDocumentVisible();
   const win = getMainWindow();
-  if (!win || showingOffline) return;
+  // A spurious failure (Windows often reports these as ERR_FAILED, not
+  // ERR_ABORTED) can arrive while the real document is still loading. Wait
+  // for that navigation instead of replacing it.
+  if (win && !win.isDestroyed() && win.webContents.isLoadingMainFrame() && !visible) {
+    failureHandledFor = -1;
+    return;
+  }
+  const action = reachabilityAction({
+    failure,
+    health: up ? "up" : "down",
+    retried: recoveryTried,
+    appVisible: visible,
+  });
+  if (action === "ignore") {
+    failureHandledFor = -1;
+    return;
+  }
+  if (action === "retry") {
+    recoveryTried = true;
+    console.warn(
+      "Page failed to load",
+      failure.errorCode,
+      description,
+      urlForLog(failure.validatedURL),
+      "loading again because keplar.one is up",
+    );
+    void loadApp(currentTarget);
+    return;
+  }
+  if (action === "offline") {
+    console.warn("Page failed to load", failure.errorCode, description, urlForLog(failure.validatedURL));
+    await showOffline(generation);
+  }
+}
+
+async function probeHealth(): Promise<boolean> {
+  try {
+    const response = await session.defaultSession.fetch(HEALTH_URL, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    return healthSaysUp(response.status, await response.text());
+  } catch (error) {
+    console.warn("Health check failed", error);
+    return false;
+  }
+}
+
+async function showOffline(generation: number): Promise<void> {
+  const win = getMainWindow();
+  if (!win || win.isDestroyed()) return;
+  if (generation !== loadGeneration || appDocumentVisible()) return;
+  if (showingOffline && win.webContents.getURL().startsWith("file:")) return;
   showingOffline = true;
   const retry =
     classifyNavigation(currentTarget) === "app" && currentTarget.startsWith("https:")
@@ -292,8 +419,31 @@ async function showOffline(): Promise<void> {
   const html = template.replaceAll("{{RETRY_URL}}", escapeAttribute(retry));
   const file = path.join(app.getPath("temp"), "keplar-offline.html");
   await fs.promises.writeFile(file, html, "utf8");
-  if (win.isDestroyed()) return;
+  if (win.isDestroyed() || generation !== loadGeneration || appDocumentVisible()) {
+    showingOffline = false;
+    return;
+  }
   await win.loadFile(file);
+}
+
+function appDocumentVisible(): boolean {
+  return appShown;
+}
+
+function isHostedAppUrl(raw: string): boolean {
+  try {
+    return isKeplarAppUrl(new URL(raw));
+  } catch {
+    return false;
+  }
+}
+
+function errnoOf(error: unknown): number {
+  if (typeof error === "object" && error !== null && "errno" in error) {
+    const errno = (error as { errno: unknown }).errno;
+    if (typeof errno === "number" && Number.isFinite(errno)) return errno;
+  }
+  return -2;
 }
 
 function installGuards(): void {

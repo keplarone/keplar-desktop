@@ -99,7 +99,7 @@ npm test
 npm start
 ```
 
-`npm start` typechecks, compiles, and opens the app against `https://keplar.one/app`.
+`npm start` typechecks, compiles, and opens the app against `https://keplar.one/app/ask`. If that path answers with an HTTP error, the window loads `https://keplar.one/app` once. That path 308s to `/app/ask` once the route is published.
 
 Package the app for the operating system you are on:
 
@@ -118,13 +118,41 @@ Regenerate icons from `assets/icon.svg` with `npm run icons`. The svg is the Kep
 3. Tag that commit with the same version and push the tag:
 
 ```bash
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 4. The **Release** workflow runs on `windows-latest`, `macos-latest`, and `ubuntu-latest`, builds the installers, writes `SHA256SUMS`, and publishes a GitHub Release for that tag with generated notes. It also uploads `latest.yml`, `latest-mac.yml`, and `latest-linux.yml`, which `electron-updater` reads.
 
-You can run the same workflow by hand from the Actions tab. The tag you enter has to match `package.json` (`v` plus the version).
+You can run the same workflow by hand from the Actions tab. The tag you enter has to match `package.json` (`v` plus the version). The workflow checks out the branch you select, so the Windows installer can be built from a pull-request branch before that branch is merged.
+
+### Windows installer
+
+Version 0.1.6 is the build that loads `https://keplar.one/app/ask` and includes the reachability fix. The file to install is `Keplar-One-0.1.6-win-x64.exe` (NSIS, 64-bit, per-user unless the wizard is changed).
+
+From GitHub, on the commit whose `package.json` version is `0.1.6`:
+
+1. Open **Actions → Release → Run workflow**.
+2. Choose the branch that contains `0.1.6` (the open pull request branch, or `main` after it is merged).
+3. Set the tag input to `v0.1.6`.
+4. When the **Build win** job finishes, download the `keplar-win` artifact. It contains `Keplar-One-0.1.6-win-x64.exe` and `latest.yml`. The same files are attached to the GitHub Release `v0.1.6` when the publish job succeeds.
+
+Pushing the tag builds the same artifacts. From that commit:
+
+```bash
+git tag v0.1.6
+git push origin v0.1.6
+```
+
+On a Windows machine, from the same commit, this writes `release/Keplar-One-0.1.6-win-x64.exe` without publishing:
+
+```bash
+npm ci
+npm test
+npm run dist:release -- win
+```
+
+`npm run dist` on Windows produces that installer too. The release script is the one that matches the workflow and skips signing when no certificate is configured. The exe is unsigned unless `WIN_CSC_LINK` or `CSC_LINK` is set. SmartScreen will warn; see [Windows](#windows).
 
 The workflow asks for `contents: write`. If publishing fails with a permissions error, open **Settings → Actions → General → Workflow permissions** and choose **Read and write permissions**.
 
@@ -150,7 +178,7 @@ The window has no File, Edit, View, Window, or Help bar. On Windows and Linux th
 
 The user agent includes the token `keplar-desktop`. The document element is `html.keplar-desktop` with `data-keplar-desktop`. While the window is not full screen, `env(titlebar-area-x)`, `env(titlebar-area-y)`, `env(titlebar-area-width)`, and `env(titlebar-area-height)` describe the band beside the window controls. keplar.one can pad its nav with those values and mark non-interactive header space with `data-keplar-drag`. Links and buttons in that band stay clickable.
 
-The main window loads `https://keplar.one` only, including subdomains, and only over HTTPS. `keplar://` links open the matching path on that site (`keplar://app/chat` opens `https://keplar.one/app/chat`). The window title stays Keplar One, including when the site says Ask Keplar.
+The main window loads `https://keplar.one/app/ask` over HTTPS, and otherwise only `https://keplar.one` including subdomains. `https://keplar.one/app` remains an app URL; the site permanently redirects it to `/app/ask`. `keplar://` links open the matching path on that site (`keplar://app/chat` opens `https://keplar.one/app/chat`). The window title stays Keplar One, including when the site says Ask Keplar.
 
 Google, Microsoft, and Whop sign-in and checkout open in a separate window limited to those providers, then return to Keplar. Other links open in your default browser. Permission prompts are denied except the microphone (voice input) and notifications, and only when the request comes from `keplar.one`. There is no Node.js in the page, no preload API, and no webview.
 

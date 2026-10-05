@@ -9,7 +9,13 @@
  */
 
 export const APP_ORIGIN = "https://keplar.one";
-export const APP_URL = "https://keplar.one/app";
+/** First page the window loads. The site permanently redirects `/app` here. */
+export const APP_URL = "https://keplar.one/app/ask";
+/**
+ * Previous entry URL. Still a valid app page: once the ask route is published
+ * it 308s to `APP_URL`, and until then it is the page that actually renders.
+ */
+export const LEGACY_APP_URL = "https://keplar.one/app";
 
 /**
  * Hosts used by Google, Microsoft, and Whop sign-in or checkout.
@@ -48,6 +54,23 @@ export function classifyNavigation(raw: string): NavigationKind {
     return "external";
   }
   return "blocked";
+}
+
+/**
+ * When the ask tab answers with an HTTP error, load `/app` once.
+ * A later 308 from `/app` back to the ask tab must not call this again.
+ */
+export function legacyAppFallback(
+  raw: string,
+  httpResponseCode: number,
+  alreadyFellBack: boolean,
+): string | null {
+  if (alreadyFellBack || httpResponseCode < 400) return null;
+  const url = parseUrl(raw);
+  if (!url || !isKeplarAppUrl(url)) return null;
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  if (path !== "/app/ask") return null;
+  return LEGACY_APP_URL;
 }
 
 export function isKeplarAppUrl(url: URL): boolean {
