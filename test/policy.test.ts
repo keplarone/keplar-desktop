@@ -1,14 +1,30 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  APP_URL,
   classifyNavigation,
   deepLinkToAppUrl,
   isAllowedSubframeUrl,
   isAuthProviderUrl,
   isKeplarAppUrl,
+  LEGACY_APP_URL,
+  legacyAppFallback,
 } from "../src/main/policy.ts";
 
 describe("keplar app urls", () => {
+  it("opens on the ask tab and can fall back to /app", () => {
+    assert.equal(APP_URL, "https://keplar.one/app/ask");
+    assert.equal(classifyNavigation(APP_URL), "app");
+    assert.equal(classifyNavigation(LEGACY_APP_URL), "app");
+    assert.equal(legacyAppFallback(APP_URL, 404, false), LEGACY_APP_URL);
+    assert.equal(legacyAppFallback("https://keplar.one/app/ask/", 500, false), LEGACY_APP_URL);
+    assert.equal(legacyAppFallback(APP_URL, 200, false), null);
+    assert.equal(legacyAppFallback(APP_URL, 308, false), null);
+    assert.equal(legacyAppFallback(APP_URL, 404, true), null);
+    assert.equal(legacyAppFallback(LEGACY_APP_URL, 404, false), null);
+    assert.equal(legacyAppFallback("https://keplar.one/app/chat", 404, false), null);
+  });
+
   it("allows https://keplar.one and its subdomains", () => {
     assert.equal(classifyNavigation("https://keplar.one/app"), "app");
     assert.equal(classifyNavigation("https://www.keplar.one/pricing"), "app");

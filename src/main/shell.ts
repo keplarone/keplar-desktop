@@ -26,6 +26,7 @@ import {
   isAllowedSubframeUrl,
   isKeplarAppUrl,
   isSafeExternalUrl,
+  legacyAppFallback,
   urlForLog,
 } from "./policy";
 import { isAuthDeepLink, signInIntent } from "./desktop-auth";
@@ -56,6 +57,8 @@ let recoveryTried = false;
  * cannot tell an error document from the app.
  */
 let appShown = false;
+/** Stops `/app` → 308 → `/app/ask` from bouncing when the ask tab is an HTTP error. */
+let usedLegacyAppUrl = false;
 let pendingDeepLink: string | null = null;
 let lastExternal = { url: "", at: 0 };
 let handoffGeneration = 0;
@@ -218,7 +221,16 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   });
 
   win.webContents.on("did-navigate", (_event, url, httpResponseCode) => {
-    if (documentCommitted(url, httpResponseCode)) appShown = true;
+    if (documentCommitted(url, httpResponseCode)) {
+      appShown = true;
+      usedLegacyAppUrl = false;
+      return;
+    }
+    const fallback = legacyAppFallback(url, httpResponseCode, usedLegacyAppUrl);
+    if (!fallback) return;
+    usedLegacyAppUrl = true;
+    console.warn("Ask page was not available", httpResponseCode, urlForLog(url), "loading /app");
+    void loadApp(fallback);
   });
 
   win.webContents.on(
