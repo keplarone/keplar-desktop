@@ -1,9 +1,15 @@
-import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, shell, type IpcMainEvent } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SignInFlow, viewFor, type FlowState, type SignInKind } from "./desktop-auth";
+import { chromePalette, type AppTheme } from "./chrome";
 import { APP_ORIGIN, isSafeExternalUrl } from "./policy";
+
+function shellBackground(): string {
+  const theme: AppTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  return chromePalette(theme).background;
+}
 
 let flow: SignInFlow | null = null;
 let win: BrowserWindow | null = null;
@@ -13,6 +19,8 @@ let getParent: () => BrowserWindow | null = () => null;
 let loadFinish: (url: string) => void = () => undefined;
 let ipcBound = false;
 let finishing = false;
+let finishingTimer: ReturnType<typeof setTimeout> | null = null;
+const FINISHING_GUARD_MS = 4000;
 
 export function initSignIn(options: { getMainWindow: () => BrowserWindow | null; loadFinish: (url: string) => void }): void {
   getParent = options.getMainWindow;
@@ -30,13 +38,32 @@ export function initSignIn(options: { getMainWindow: () => BrowserWindow | null;
     else if (id === "retry") void ensureFlow().retry();
     else if (id === "reopen") void ensureFlow().reopenBrowser();
   });
+  nativeTheme.on("updated", () => {
+    if (!win || win.isDestroyed()) return;
+    win.setBackgroundColor(shellBackground());
+  });
 }
 
 /** True while the app is loading the finish URL, so the redirect that follows is not mistaken for a new sign-in request. */
 export const isFinishingSignIn = (): boolean => finishing;
 export const clearFinishing = (): void => {
+  if (finishingTimer) clearTimeout(finishingTimer);
+  finishingTimer = null;
   finishing = false;
 };
+
+/**
+ * The finish page stayed on screen. Keep ignoring /signin for a moment so its own
+ * redirect is not a second sign-in, then release the guard if nothing navigates away.
+ */
+export function holdFinishingGuard(): void {
+  if (!finishing) return;
+  if (finishingTimer) clearTimeout(finishingTimer);
+  finishingTimer = setTimeout(() => {
+    finishingTimer = null;
+    finishing = false;
+  }, FINISHING_GUARD_MS);
+}
 
 function deviceLabel(): string {
   const os_ = process.platform === "win32" ? "Windows" : process.platform === "darwin" ? "macOS" : "Linux";
@@ -122,7 +149,7 @@ function openWindow(): void {
     fullscreenable: false,
     show: false,
     title: "Keplar One",
-    backgroundColor: "#0b0b0d",
+    backgroundColor: shellBackground(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/signin-preload.js"),
@@ -158,9 +185,9 @@ function openWindow(): void {
 }
 
 function closeWindow(): void {
-  if (win && !win.isDestroyed()) {
-    const w = win;
-    win = null;
-    w.destroy();
-  }
+  if (!win || win.isDestroyed()) return;
+  const w = win;
+  win = null;
+  // close() ends a modal session. destroy() leaves the main window unable to take input.
+  w.close();
 }

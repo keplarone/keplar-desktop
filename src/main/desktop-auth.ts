@@ -24,6 +24,8 @@ export const API_PREFIX = "/api/auth/desktop";
 export const POLL_MS = 2000;
 export const MAX_POLL_FAILURES = 8;
 export const REQUEST_TIMEOUT_MS = 10_000;
+/** The server's request lifetime. A missing or absurd value must not keep the window open forever. */
+const MAX_REQUEST_LIFETIME_S = 600;
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const isRid = (v: unknown): v is string => typeof v === "string" && v.length === 32 && B64URL.test(v);
@@ -66,6 +68,19 @@ export function parseAuthDeepLink(raw: string): { code: string; rid: string } | 
 }
 
 export const isAuthDeepLink = (raw: string): boolean => /^keplar:\/\/auth(?:[/?#]|$)/i.test(raw.trim());
+
+/** The single-use ticket page. A redirect away from it is part of signing in, not a new request. */
+export function isFinishUrl(raw: string, origin: string = APP_ORIGIN): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.origin !== origin) return false;
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  return path === `${API_PREFIX}/finish`;
+}
 
 /* ───────────────────────────── PKCE ───────────────────────────── */
 
@@ -122,6 +137,7 @@ export class SignInFlow {
   private gen = 0;
   private exchanging = false;
   private failures = 0;
+  private browserOpened = false;
   private timer: unknown = null;
   private readonly origin: string;
 
@@ -165,7 +181,7 @@ export class SignInFlow {
     const rid = res.rid;
     const code = res.code;
     const url = res.url;
-    const expiresIn = typeof res.expiresIn === "number" ? res.expiresIn : 600;
+    const expiresIn = requestLifetimeSeconds(res.expiresIn);
     // The page we open in the browser must be OUR connect page for THIS request, whatever the server said.
     if (!isRid(rid) || typeof code !== "string" || typeof url !== "string" || url !== `${this.origin}/desktop/connect?rid=${encodeURIComponent(rid)}`) {
       this.fail("server");
@@ -182,6 +198,7 @@ export class SignInFlow {
       opened = false;
     }
     if (gen !== this.gen) return;
+    this.browserOpened = opened;
     this.set({ phase: "waiting", kind, code, expiresAt: this.expiresAt, browserOpened: opened });
     this.schedulePoll(gen);
   }
@@ -196,7 +213,10 @@ export class SignInFlow {
     } catch {
       opened = false;
     }
-    if (gen === this.gen && this.state.phase === "waiting") this.set({ ...this.state, browserOpened: opened });
+    if (gen === this.gen && this.state.phase === "waiting") {
+      this.browserOpened = opened;
+      this.set({ ...this.state, browserOpened: opened });
+    }
   }
 
   /** A keplar://auth link arrived. Returns true when it belonged to the running sign-in. */
@@ -209,7 +229,8 @@ export class SignInFlow {
 
   /** Cancel. The server is told (best effort) so the browser page stops working. */
   cancel(): void {
-    if (this.state.phase === "idle" || this.state.phase === "done") return;
+    // Finishing already traded the one-time code. Cancelling now would throw away a sign-in that succeeded.
+    if (this.state.phase === "idle" || this.state.phase === "done" || this.state.phase === "finishing") return;
     const rid = this.rid;
     const verifier = this.verifier;
     this.gen++;
@@ -321,7 +342,7 @@ export class SignInFlow {
         return;
       }
       // Network trouble: go back to waiting; the poll will hand over a fresh code.
-      this.set({ phase: "waiting", kind: this.kind, code: this.display, expiresAt: this.expiresAt, browserOpened: true });
+      this.set({ phase: "waiting", kind: this.kind, code: this.display, expiresAt: this.expiresAt, browserOpened: this.browserOpened });
       this.failures++;
       this.schedulePoll(gen);
       return;
@@ -360,6 +381,11 @@ export class SignInFlow {
     if (!res.ok) throw new HttpError(res.status, typeof obj.code === "string" ? obj.code : "");
     return obj;
   }
+}
+
+function requestLifetimeSeconds(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return MAX_REQUEST_LIFETIME_S;
+  return Math.min(value, MAX_REQUEST_LIFETIME_S);
 }
 
 class HttpError extends Error {
@@ -403,7 +429,7 @@ export function viewFor(state: FlowState): SignInView | null {
         phase: "waiting",
         title: state.kind === "add" ? "Finish adding the account in your browser" : "Finish signing in with your browser",
         message: state.browserOpened
-          ? "Sign in there, then choose Open Keplar One. This window updates by itself. Check that the code matches:"
+          ? "Sign in there, then choose Connect Keplar One. This window updates by itself. Check that the code matches:"
           : "We couldn't open your browser. Choose Open browser again, then sign in there. Check that the code matches:",
         code: state.code,
         actions: [

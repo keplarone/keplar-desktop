@@ -25,3 +25,12 @@ export function fitToWorkArea(box: Box, area: Box): Box {
 export function fitSizeToWorkArea(size: { width: number; height: number }, area: Box): { width: number; height: number } {
   return { width: Math.min(size.width, area.width), height: Math.min(size.height, area.height) };
 }
+
+/**
+ * Fullscreen first stretches the window to the display, then flips the fullscreen flag.
+ * Writing that stretched size would reopen the window under the taskbar.
+ * While the normal frame is remembered and fullscreen is not on yet, skip the write.
+ */
+export function shouldPersistBounds(isFullScreen: boolean, holdingNormalFrame: boolean): boolean {
+  return isFullScreen || !holdingNormalFrame;
+}

@@ -7,6 +7,7 @@ import {
   challengeOf,
   isAuthDeepLink,
   newVerifier,
+  isFinishUrl,
   parseAuthDeepLink,
   signInIntent,
   viewFor,
@@ -61,7 +62,7 @@ describe("PKCE", () => {
 });
 
 /* A fake of the server's /api/auth/desktop/* endpoints, enough to run the flow. */
-function fakeServer(opts: { pollStatuses?: string[]; exchange?: "ok" | "400-EXPIRED" | "400-USED" | "network-once" } = {}) {
+function fakeServer(opts: { pollStatuses?: string[]; exchange?: "ok" | "400-EXPIRED" | "400-USED" | "network-once"; expiresIn?: unknown; omitExpiresIn?: boolean } = {}) {
   const calls: { path: string; body: Record<string, unknown>; origin: string | null }[] = [];
   let challenge = "";
   const polls = [...(opts.pollStatuses ?? ["pending"])];
@@ -73,7 +74,9 @@ function fakeServer(opts: { pollStatuses?: string[]; exchange?: "ok" | "400-EXPI
     calls.push({ path, body, origin: new Headers(init?.headers).get("origin") });
     if (path === "start") {
       challenge = String(body.challenge);
-      return json({ rid: RID, code: "K7F-2QM", url: `${ORIGIN}/desktop/connect?rid=${RID}`, expiresIn: 600 });
+      const started: Record<string, unknown> = { rid: RID, code: "K7F-2QM", url: `${ORIGIN}/desktop/connect?rid=${RID}` };
+      if (!opts.omitExpiresIn) started.expiresIn = "expiresIn" in opts ? opts.expiresIn : 600;
+      return json(started);
     }
     if (path === "poll") {
       assert.equal(challengeOf(String(body.verifier)), challenge, "poll carries the verifier of this request");
@@ -261,6 +264,62 @@ describe("the sign-in flow", () => {
     h.flow.dispose();
   });
 
+  it("cancel does nothing while the one-time code is being exchanged", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const server = fakeServer({ pollStatuses: ["pending"] });
+    const fetch = (async (input: string, init?: RequestInit) => {
+      if (new URL(input).pathname.endsWith("/exchange")) await gate;
+      return server.fetch(input, init);
+    }) as typeof globalThis.fetch;
+    const states: FlowState[] = [];
+    const finished: string[] = [];
+    const flow = new SignInFlow({
+      fetch,
+      openExternal: async () => undefined,
+      loadFinish: (url) => finished.push(url),
+      onState: (state) => states.push(state),
+      label: "x",
+      pollMs: 1000,
+    });
+    await flow.begin("signin");
+    const pending = flow.handleDeepLink(`keplar://auth?code=${CODE}&rid=${RID}`);
+    await until(() => flow.current.phase === "finishing");
+    flow.cancel();
+    assert.equal(flow.current.phase, "finishing");
+    assert.equal(server.calls.some((call) => call.path === "cancel"), false);
+    release();
+    await pending;
+    assert.equal(flow.current.phase, "done");
+    assert.equal(finished.length, 1);
+  });
+
+  it("a failed exchange remembers whether the browser actually opened", async () => {
+    const h = harness(fakeServer({ exchange: "network-once", pollStatuses: ["pending"] }), { openFails: true, pollMs: 1000 });
+    await h.flow.begin("signin");
+    await h.flow.handleDeepLink(`keplar://auth?code=${CODE}&rid=${RID}`);
+    const waiting = h.flow.current as Extract<FlowState, { phase: "waiting" }>;
+    assert.equal(waiting.phase, "waiting");
+    assert.equal(waiting.browserOpened, false);
+    h.flow.dispose();
+  });
+
+  it("caps a huge expiresIn at 10 minutes and treats a missing one as 10 minutes", async () => {
+    for (const opts of [{ expiresIn: 100000 }, { omitExpiresIn: true }]) {
+      let t = 1_000_000;
+      const h = harness(fakeServer(opts), { now: () => t, pollMs: 5 });
+      await h.flow.begin("signin");
+      t += 599 * 1000;
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(h.flow.current.phase, "waiting");
+      t += 2 * 1000;
+      await until(() => h.flow.current.phase === "error");
+      assert.equal((h.flow.current as { reason?: string }).reason, "expired");
+    }
+  });
+
   it("a second Sign in click while waiting does not start another request (it re-opens the browser)", async () => {
     const s = fakeServer();
     const h = harness(s);
@@ -272,12 +331,23 @@ describe("the sign-in flow", () => {
   });
 });
 
+describe("the finish page", () => {
+  it("recognises only the ticket URL on keplar.one", () => {
+    assert.equal(isFinishUrl(`https://keplar.one/api/auth/desktop/finish?ticket=${TICKET}`), true);
+    assert.equal(isFinishUrl("https://keplar.one/api/auth/desktop/finish/"), true);
+    assert.equal(isFinishUrl("https://keplar.one/app/ask"), false);
+    assert.equal(isFinishUrl("https://evil.example/api/auth/desktop/finish"), false);
+    assert.equal(isFinishUrl("not a url"), false);
+  });
+});
+
 describe("what the waiting window shows", () => {
   it("has a title, a message, the code and a Cancel for every active phase, and nothing when idle", () => {
     assert.equal(viewFor({ phase: "idle" }), null);
     assert.equal(viewFor({ phase: "done", kind: "signin" }), null);
     const add = viewFor({ phase: "waiting", kind: "add", code: "ABC-234", expiresAt: 1, browserOpened: true })!;
     assert.match(add.title, /adding the account/);
+    assert.match(add.message, /Connect Keplar One/);
     assert.equal(add.code, "ABC-234");
     assert.ok(add.actions.some((a) => a.id === "cancel"));
     const starting = viewFor({ phase: "starting", kind: "signin" })!;

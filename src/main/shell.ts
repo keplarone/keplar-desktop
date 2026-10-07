@@ -2,6 +2,8 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
+  nativeTheme,
   screen,
   session,
   shell,
@@ -13,25 +15,33 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   APP_TITLE,
+  chromePalette,
   fullscreenHideCss,
+  lightAuraCss,
   mainWindowChrome,
+  parseAppTheme,
   titleBarOverlay,
   windowDragCss,
+  type AppTheme,
 } from "./chrome";
 import { bindAccelerators } from "./menu";
 import {
   APP_URL,
+  allowsPagePermission,
   classifyNavigation,
   deepLinkToAppUrl,
   isAllowedSubframeUrl,
+  isAuthProviderUrl,
   isKeplarAppUrl,
+  isLocalNetworkUrl,
   isSafeExternalUrl,
+  safeDownloadName,
   legacyAppFallback,
   urlForLog,
 } from "./policy";
-import { isAuthDeepLink, signInIntent } from "./desktop-auth";
-import { clearFinishing, handleAuthLink, initSignIn, isFinishingSignIn, startSignIn } from "./signin-window";
-import { documentCommitted, HEALTH_URL, healthSaysUp, reachabilityAction, type LoadFailure } from "./reachability";
+import { isAuthDeepLink, isFinishUrl, signInIntent } from "./desktop-auth";
+import { clearFinishing, handleAuthLink, holdFinishingGuard, initSignIn, isFinishingSignIn, startSignIn } from "./signin-window";
+import { documentCommitted, ERR_ABORTED, HEALTH_URL, healthSaysUp, reachabilityAction, type LoadFailure } from "./reachability";
 import { desktopUserAgent } from "./user-agent";
 import {
   captureFrameForFullscreen,
@@ -61,7 +71,35 @@ let appShown = false;
 let usedLegacyAppUrl = false;
 let pendingDeepLink: string | null = null;
 let lastExternal = { url: "", at: 0 };
+const externalOpens: number[] = [];
 let handoffGeneration = 0;
+let chromeTheme: AppTheme = "dark";
+let chromeThemeBound = false;
+
+function systemChromeTheme(): AppTheme {
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
+
+function applyWindowChrome(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  win.setBackgroundColor(chromePalette(chromeTheme).background);
+  win.setTitleBarOverlay(titleBarOverlay(win.isFullScreen(), chromeTheme));
+}
+
+function bindChromeTheme(): void {
+  if (chromeThemeBound) return;
+  chromeThemeBound = true;
+  ipcMain.on("keplar:theme", (event, value: unknown) => {
+    if (mainWebContentsId === null || event.sender.id !== mainWebContentsId) return;
+    const frame = event.senderFrame;
+    if (frame && frame !== event.sender.mainFrame) return;
+    const theme = parseAppTheme(value);
+    if (!theme || theme === chromeTheme) return;
+    chromeTheme = theme;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) applyWindowChrome(win);
+  });
+}
 
 export function getMainWindow(): BrowserWindow | null {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
@@ -156,6 +194,7 @@ export function openDeepLink(raw: string): void {
 
 export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   installGuards();
+  bindChromeTheme();
   const existing = getMainWindow();
   if (existing) {
     focusMain();
@@ -164,13 +203,14 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
 
   const state = loadWindowState();
   const icon = iconPath();
+  chromeTheme = systemChromeTheme();
   const options: BrowserWindowConstructorOptions = {
     width: state.width,
     height: state.height,
     minWidth: windowMinimums.minWidth,
     minHeight: windowMinimums.minHeight,
     show: false,
-    ...mainWindowChrome(process.platform),
+    ...mainWindowChrome(process.platform, chromeTheme),
     webPreferences: hardenedWebPreferences(),
   };
   if (state.x !== undefined && state.y !== undefined) {
@@ -191,7 +231,7 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   });
   win.webContents.on("dom-ready", () => {
     if (win.isDestroyed()) return;
-    void win.webContents.insertCSS(windowDragCss());
+    void win.webContents.insertCSS(desktopShellCss());
     win.setTitle(APP_TITLE);
   });
   bindFullscreenChrome(win);
@@ -236,6 +276,7 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   win.webContents.on(
     "did-fail-load",
     (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (isMainFrame && errorCode !== ERR_ABORTED && isFinishUrl(validatedURL)) clearFinishing();
       void onAppLoadFailed(
         loadGeneration,
         { errorCode, isMainFrame, validatedURL },
@@ -252,7 +293,8 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
       showingOffline = false;
       recoveryTried = false;
     }
-    if (!current.includes("/api/auth/desktop/finish")) clearFinishing();
+    if (isFinishUrl(current)) holdFinishingGuard();
+    else clearFinishing();
   });
 
   win.webContents.on("render-process-gone", (_event, details) => {
@@ -288,14 +330,26 @@ export function configureSession(): void {
   ses.setUserAgent(desktopUserAgent(ses.getUserAgent()));
 
   ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
-    callback(allowsPermission(permission, details));
+    callback(allowsPagePermission(permission, details));
   });
 
-  ses.setPermissionCheckHandler((_contents, permission, _origin, details) => {
-    return allowsPermission(permission, details);
+  ses.setPermissionCheckHandler((_contents, permission, requestingOrigin, details) => {
+    return allowsPagePermission(permission, details, requestingOrigin);
   });
 
   ses.setDevicePermissionHandler(() => false);
+  ses.setDisplayMediaRequestHandler((_request, callback) => {
+    callback({});
+  });
+
+  ses.webRequest.onBeforeRequest((details, callback) => {
+    if (isLocalNetworkUrl(details.url)) {
+      console.warn("Blocked a request to this computer", urlForLog(details.url));
+      callback({ cancel: true });
+      return;
+    }
+    callback({});
+  });
 
   ses.on("will-download", (_event, item, webContents) => {
     const owner = BrowserWindow.fromWebContents(webContents);
@@ -415,10 +469,10 @@ async function showOffline(generation: number): Promise<void> {
     classifyNavigation(currentTarget) === "app" && currentTarget.startsWith("https:")
       ? currentTarget
       : APP_URL;
-  const template = fs.readFileSync(offlineTemplateFile(), "utf8");
-  const html = template.replaceAll("{{RETRY_URL}}", escapeAttribute(retry));
-  const file = path.join(app.getPath("temp"), "keplar-offline.html");
-  await fs.promises.writeFile(file, html, "utf8");
+  const html = offlineTemplate().replaceAll("{{RETRY_URL}}", escapeAttribute(retry));
+  const dir = await fs.promises.mkdtemp(path.join(app.getPath("temp"), "keplar-offline-"));
+  const file = path.join(dir, "offline.html");
+  await fs.promises.writeFile(file, html, { encoding: "utf8", flag: "wx", mode: 0o600 });
   if (win.isDestroyed() || generation !== loadGeneration || appDocumentVisible()) {
     showingOffline = false;
     return;
@@ -450,13 +504,22 @@ function installGuards(): void {
   if (guardsInstalled) return;
   guardsInstalled = true;
 
+  app.on("certificate-error", (_event, _webContents, url, _error, _certificate, callback) => {
+    console.warn("Rejected certificate", urlForLog(url));
+    callback(false);
+  });
+
   app.on("web-contents-created", (_event, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
       if (url === "about:blank") {
-        return {
-          action: "allow",
-          overrideBrowserWindowOptions: authWindowOptions(),
-        };
+        const opener = parseOpener(contents.getURL());
+        if (opener && isAuthProviderUrl(opener)) {
+          return {
+            action: "allow",
+            overrideBrowserWindowOptions: authWindowOptions(),
+          };
+        }
+        return { action: "deny" };
       }
       const kind = classifyNavigation(url);
       if (kind === "auth") {
@@ -473,7 +536,10 @@ function installGuards(): void {
         }
         return { action: "deny" };
       }
-      if (kind === "external") void openExternalUrl(url);
+      if (kind === "external") {
+        void openExternalUrl(url);
+        return { action: "deny" };
+      }
       console.warn("Blocked new window", urlForLog(url));
       return { action: "deny" };
     });
@@ -622,7 +688,7 @@ function bindFullscreenChrome(win: BrowserWindow): void {
     try {
       const fullscreen = win.isFullScreen();
       if (fullscreen) ensureFullscreenFrame(win);
-      win.setTitleBarOverlay(titleBarOverlay(fullscreen));
+      win.setTitleBarOverlay(titleBarOverlay(fullscreen, chromeTheme));
       if (process.platform === "darwin") win.setWindowButtonVisibility(!fullscreen);
       if (!fullscreen && process.platform === "win32") win.setAlwaysOnTop(false);
       if (!fullscreen) {
@@ -664,37 +730,19 @@ async function syncFullscreenCss(
   setKey(null);
 }
 
-function allowsPermission(
-  permission: string,
-  details: { requestingUrl?: string; securityOrigin?: string; mediaTypes?: string[]; mediaType?: string },
-): boolean {
-  if (!isKeplarPermission(details)) return false;
-  if (permission === "notifications") return true;
-  if (permission === "media") {
-    const types =
-      details.mediaTypes ?? (details.mediaType ? [details.mediaType] : []);
-    return types.length > 0 && types.every((type) => type === "audio");
-  }
-  return false;
-}
-
-function isKeplarPermission(details: {
-  requestingUrl?: string;
-  securityOrigin?: string;
-}): boolean {
-  const raw = details.requestingUrl || details.securityOrigin;
-  if (!raw) return false;
-  try {
-    return isKeplarAppUrl(new URL(raw));
-  } catch {
-    return false;
-  }
-}
-
 async function openExternalUrl(raw: string): Promise<void> {
-  if (!isSafeExternalUrl(raw)) return;
+  if (!isSafeExternalUrl(raw)) {
+    console.warn("Blocked external link", urlForLog(raw));
+    return;
+  }
   const now = Date.now();
   if (lastExternal.url === raw && now - lastExternal.at < 1000) return;
+  while (externalOpens.length > 0 && now - (externalOpens[0] ?? now) > 10_000) externalOpens.shift();
+  if (externalOpens.length >= 5) {
+    console.warn("Blocked a burst of external links");
+    return;
+  }
+  externalOpens.push(now);
   lastExternal = { url: raw, at: now };
   try {
     await shell.openExternal(raw);
@@ -733,8 +781,22 @@ function loadingFile(): string {
   return path.join(__dirname, "../renderer/loading.html");
 }
 
+let cachedOfflineTemplate: string | null = null;
+
 function offlineTemplateFile(): string {
   return path.join(__dirname, "../renderer/offline.html");
+}
+
+function offlineTemplate(): string {
+  cachedOfflineTemplate ??= fs.readFileSync(offlineTemplateFile(), "utf8");
+  return cachedOfflineTemplate;
+}
+
+let cachedShellCss: string | null = null;
+
+function desktopShellCss(): string {
+  cachedShellCss ??= `${windowDragCss()}\n${lightAuraCss()}`;
+  return cachedShellCss;
 }
 
 function escapeAttribute(value: string): string {
@@ -742,10 +804,15 @@ function escapeAttribute(value: string): string {
     .replaceAll("&", "&amp;")
     .replaceAll('"', "&quot;")
     .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+    .replaceAll(">", "&gt;")
+    .replaceAll("\n", "")
+    .replaceAll("\r", "");
 }
 
-function safeDownloadName(name: string): string {
-  const base = path.basename(name).replace(/[^\w.\- ()[\]]+/g, "_");
-  return base || "download";
+function parseOpener(raw: string): URL | null {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
 }

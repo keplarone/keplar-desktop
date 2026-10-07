@@ -1,5 +1,6 @@
 import path from "node:path";
 import { app } from "electron";
+import { debuggerLaunchArgs, hasDebuggerFlag } from "./launch-guard";
 import { installMenu } from "./menu";
 import { desktopUserAgent } from "./user-agent";
 import {
@@ -20,43 +21,52 @@ app.commandLine.appendSwitch("enable-gpu-rasterization");
 app.commandLine.appendSwitch("enable-zero-copy");
 app.commandLine.appendSwitch("disable-features", "SpareRendererForSitePerProcess");
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
-if (!gotSingleInstanceLock) {
-  app.quit();
+const refused =
+  app.isPackaged &&
+  hasDebuggerFlag(debuggerLaunchArgs(process.argv, process.execArgv, process.env.NODE_OPTIONS ?? ""));
+
+if (refused) {
+  console.error("Refusing to start with a debugger port");
+  app.exit(1);
 } else {
-  app.on("second-instance", (_event, argv) => {
-    const link = argv.find((arg) => arg.startsWith("keplar://"));
-    if (link) openDeepLink(link);
-    else focusMain();
-  });
-
-  app.on("open-url", (event, url) => {
-    event.preventDefault();
-    if (app.isReady()) openDeepLink(url);
-    else rememberDeepLink(url);
-  });
-
-  void app.whenReady().then(async () => {
-    if (process.platform === "win32") {
-      app.setAppUserModelId("one.keplar.desktop");
-    }
-    if (app.isPackaged) {
-      app.setAsDefaultProtocolClient("keplar");
-    }
-
-    configureSession();
-    installMenu();
-
-    const initialUrl = takeInitialUrl(process.argv);
-    await createMainWindow(initialUrl);
-    setupAutoUpdater(getMainWindow);
-
-    app.on("activate", () => {
-      if (!getMainWindow()) void createMainWindow();
+  const gotSingleInstanceLock = app.requestSingleInstanceLock();
+  if (!gotSingleInstanceLock) {
+    app.quit();
+  } else {
+    app.on("second-instance", (_event, argv) => {
+      const link = argv.find((arg) => arg.startsWith("keplar://"));
+      if (link) openDeepLink(link);
+      else focusMain();
     });
-  });
 
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
-  });
+    app.on("open-url", (event, url) => {
+      event.preventDefault();
+      if (app.isReady()) openDeepLink(url);
+      else rememberDeepLink(url);
+    });
+
+    void app.whenReady().then(async () => {
+      if (process.platform === "win32") {
+        app.setAppUserModelId("one.keplar.desktop");
+      }
+      if (app.isPackaged) {
+        app.setAsDefaultProtocolClient("keplar");
+      }
+
+      configureSession();
+      installMenu();
+
+      const initialUrl = takeInitialUrl(process.argv);
+      await createMainWindow(initialUrl);
+      setupAutoUpdater(getMainWindow);
+
+      app.on("activate", () => {
+        if (!getMainWindow()) void createMainWindow();
+      });
+    });
+
+    app.on("window-all-closed", () => {
+      if (process.platform !== "darwin") app.quit();
+    });
+  }
 }
