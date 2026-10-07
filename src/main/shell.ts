@@ -31,8 +31,11 @@ import {
   classifyNavigation,
   deepLinkToAppUrl,
   isAllowedSubframeUrl,
+  isAuthProviderUrl,
   isKeplarAppUrl,
+  isLocalNetworkUrl,
   isSafeExternalUrl,
+  safeDownloadName,
   legacyAppFallback,
   urlForLog,
 } from "./policy";
@@ -68,6 +71,7 @@ let appShown = false;
 let usedLegacyAppUrl = false;
 let pendingDeepLink: string | null = null;
 let lastExternal = { url: "", at: 0 };
+const externalOpens: number[] = [];
 let handoffGeneration = 0;
 let chromeTheme: AppTheme = "dark";
 let chromeThemeBound = false;
@@ -334,6 +338,18 @@ export function configureSession(): void {
   });
 
   ses.setDevicePermissionHandler(() => false);
+  ses.setDisplayMediaRequestHandler((_request, callback) => {
+    callback({});
+  });
+
+  ses.webRequest.onBeforeRequest((details, callback) => {
+    if (isLocalNetworkUrl(details.url)) {
+      console.warn("Blocked a request to this computer", urlForLog(details.url));
+      callback({ cancel: true });
+      return;
+    }
+    callback({});
+  });
 
   ses.on("will-download", (_event, item, webContents) => {
     const owner = BrowserWindow.fromWebContents(webContents);
@@ -454,8 +470,9 @@ async function showOffline(generation: number): Promise<void> {
       ? currentTarget
       : APP_URL;
   const html = offlineTemplate().replaceAll("{{RETRY_URL}}", escapeAttribute(retry));
-  const file = path.join(app.getPath("temp"), "keplar-offline.html");
-  await fs.promises.writeFile(file, html, "utf8");
+  const dir = await fs.promises.mkdtemp(path.join(app.getPath("temp"), "keplar-offline-"));
+  const file = path.join(dir, "offline.html");
+  await fs.promises.writeFile(file, html, { encoding: "utf8", flag: "wx", mode: 0o600 });
   if (win.isDestroyed() || generation !== loadGeneration || appDocumentVisible()) {
     showingOffline = false;
     return;
@@ -487,13 +504,22 @@ function installGuards(): void {
   if (guardsInstalled) return;
   guardsInstalled = true;
 
+  app.on("certificate-error", (_event, _webContents, url, _error, _certificate, callback) => {
+    console.warn("Rejected certificate", urlForLog(url));
+    callback(false);
+  });
+
   app.on("web-contents-created", (_event, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
       if (url === "about:blank") {
-        return {
-          action: "allow",
-          overrideBrowserWindowOptions: authWindowOptions(),
-        };
+        const opener = parseOpener(contents.getURL());
+        if (opener && isAuthProviderUrl(opener)) {
+          return {
+            action: "allow",
+            overrideBrowserWindowOptions: authWindowOptions(),
+          };
+        }
+        return { action: "deny" };
       }
       const kind = classifyNavigation(url);
       if (kind === "auth") {
@@ -705,9 +731,18 @@ async function syncFullscreenCss(
 }
 
 async function openExternalUrl(raw: string): Promise<void> {
-  if (!isSafeExternalUrl(raw)) return;
+  if (!isSafeExternalUrl(raw)) {
+    console.warn("Blocked external link", urlForLog(raw));
+    return;
+  }
   const now = Date.now();
   if (lastExternal.url === raw && now - lastExternal.at < 1000) return;
+  while (externalOpens.length > 0 && now - (externalOpens[0] ?? now) > 10_000) externalOpens.shift();
+  if (externalOpens.length >= 5) {
+    console.warn("Blocked a burst of external links");
+    return;
+  }
+  externalOpens.push(now);
   lastExternal = { url: raw, at: now };
   try {
     await shell.openExternal(raw);
@@ -769,10 +804,15 @@ function escapeAttribute(value: string): string {
     .replaceAll("&", "&amp;")
     .replaceAll('"', "&quot;")
     .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+    .replaceAll(">", "&gt;")
+    .replaceAll("\n", "")
+    .replaceAll("\r", "");
 }
 
-function safeDownloadName(name: string): string {
-  const base = path.basename(name).replace(/[^\w.\- ()[\]]+/g, "_");
-  return base || "download";
+function parseOpener(raw: string): URL | null {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
 }

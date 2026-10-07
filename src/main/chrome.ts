@@ -146,10 +146,10 @@ export function fullscreenHideCss(): string {
  * behind the page. Dark mode is untouched.
  */
 const LIGHT_AURA_IMAGE = [
-  "radial-gradient(46vmax 40vmax at 22% -8%, rgba(255, 156, 122, 0.7), transparent 68%)",
-  "radial-gradient(44vmax 40vmax at 96% 0%, rgba(168, 146, 255, 0.55), transparent 66%)",
-  "radial-gradient(42vmax 36vmax at 70% 108%, rgba(98, 198, 214, 0.5), transparent 70%)",
-  "radial-gradient(38vmax 34vmax at 40% 100%, rgba(255, 196, 140, 0.48), transparent 72%)",
+  "radial-gradient(46vmax 40vmax at 18% -6%, rgba(255, 156, 122, 0.85), transparent 62%)",
+  "radial-gradient(44vmax 40vmax at 96% 0%, rgba(168, 146, 255, 0.68), transparent 62%)",
+  "radial-gradient(42vmax 36vmax at 72% 108%, rgba(98, 198, 214, 0.58), transparent 66%)",
+  "radial-gradient(38vmax 34vmax at 28% 104%, rgba(255, 196, 140, 0.55), transparent 68%)",
 ].join(", ");
 
 export function lightAuraCss(): string {
@@ -185,7 +185,6 @@ export function lightAuraCss(): string {
       background-color: ${LIGHT_CHROME_COLOR};
       background-image: ${LIGHT_AURA_IMAGE};
       background-repeat: no-repeat;
-      background-size: 150% 150%;
     }
     @media (prefers-reduced-motion: reduce), (prefers-contrast: more), (forced-colors: active) {
       html[data-theme="light"]:is(.keplar-desktop, [data-keplar-desktop]),

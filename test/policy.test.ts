@@ -7,6 +7,9 @@ import {
   isAllowedSubframeUrl,
   isAuthProviderUrl,
   isKeplarAppUrl,
+  isLocalNetworkUrl,
+  isSafeExternalUrl,
+  safeDownloadName,
   LEGACY_APP_URL,
   legacyAppFallback,
   allowsPagePermission,
@@ -109,6 +112,57 @@ describe("subframes", () => {
   it("blocks other origins inside frames", () => {
     assert.equal(isAllowedSubframeUrl("https://evil.example/phish"), false);
     assert.equal(isAllowedSubframeUrl("javascript:alert(1)"), false);
+    assert.equal(isAllowedSubframeUrl("data:text/html,<script>alert(1)</script>"), false);
+    assert.equal(isAllowedSubframeUrl("data:image/svg+xml,<svg>"), false);
+    assert.equal(isAllowedSubframeUrl("blob:https://evil.example/uuid"), false);
+    assert.equal(isAllowedSubframeUrl("data:image/png;base64,aaaa"), true);
+  });
+});
+
+describe("links opened in the system browser", () => {
+  it("allows public https pages and mailto", () => {
+    assert.equal(isSafeExternalUrl("https://example.com/docs"), true);
+    assert.equal(isSafeExternalUrl("mailto:team@keplar.one"), true);
+  });
+
+  it("blocks http, credentials, and addresses on this computer", () => {
+    assert.equal(isSafeExternalUrl("http://example.com"), false);
+    assert.equal(isSafeExternalUrl("http://keplar.one/app"), false);
+    assert.equal(isSafeExternalUrl("https://user:pass@example.com"), false);
+    assert.equal(isSafeExternalUrl("https://127.0.0.1/"), false);
+    assert.equal(isSafeExternalUrl("https://2130706433/"), false);
+    assert.equal(isSafeExternalUrl("https://localhost/"), false);
+    assert.equal(isSafeExternalUrl("https://192.168.1.1/"), false);
+    assert.equal(isSafeExternalUrl("https://[::1]/"), false);
+    assert.equal(isSafeExternalUrl("mailto:team@keplar.one\nBcc:evil@example.com"), false);
+  });
+});
+
+describe("requests to this computer", () => {
+  it("blocks local and private addresses and leaves public https alone", () => {
+    assert.equal(isLocalNetworkUrl("https://keplar.one/app/ask"), false);
+    assert.equal(isLocalNetworkUrl("https://example.com/image.png"), false);
+    assert.equal(isLocalNetworkUrl("https://127.0.0.1/"), true);
+    assert.equal(isLocalNetworkUrl("http://user:pass@127.0.0.1/"), true);
+    assert.equal(isLocalNetworkUrl("https://2130706433/"), true);
+    assert.equal(isLocalNetworkUrl("https://localhost/"), true);
+    assert.equal(isLocalNetworkUrl("https://printer.local/"), true);
+    assert.equal(isLocalNetworkUrl("https://10.1.2.3/"), true);
+    assert.equal(isLocalNetworkUrl("https://169.254.169.254/"), true);
+    assert.equal(isLocalNetworkUrl("https://192.168.1.1/"), true);
+    assert.equal(isLocalNetworkUrl("wss://127.0.0.1/socket"), true);
+    assert.equal(isLocalNetworkUrl("https://[::1]/"), true);
+    assert.equal(isLocalNetworkUrl("file:///tmp/offline.html"), false);
+  });
+});
+
+describe("download names", () => {
+  it("drops directories and windows device names", () => {
+    assert.equal(safeDownloadName("notes.pdf"), "notes.pdf");
+    assert.equal(safeDownloadName("../../etc/passwd"), "passwd");
+    assert.equal(safeDownloadName("..\\windows\\system32\\cmd.exe"), "cmd.exe");
+    assert.equal(safeDownloadName("CON.txt"), "download");
+    assert.equal(safeDownloadName(""), "download");
   });
 });
 

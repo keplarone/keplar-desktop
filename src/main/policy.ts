@@ -7,6 +7,7 @@
  *
  * This module does not import Electron so the rules can be tested directly.
  */
+import { BlockList, isIP } from "node:net";
 
 export const APP_ORIGIN = "https://keplar.one";
 /** First page the window loads. The site permanently redirects `/app` here. */
@@ -127,23 +128,105 @@ export function deepLinkToAppUrl(raw: string): string | null {
   return target.toString();
 }
 
+const SAFE_DATA_IMAGE = /^image\/(png|jpeg|gif|webp|avif|bmp)(;|$)/i;
+
 /** Subframe navigations that are not the app itself. */
 export function isAllowedSubframeUrl(raw: string): boolean {
   if (raw === "about:blank" || raw === "about:srcdoc") return true;
   const url = parseUrl(raw);
   if (!url) return false;
-  if (url.protocol === "blob:" || url.protocol === "data:") return true;
+  if (url.protocol === "data:") {
+    const mime = url.pathname.split(",")[0] ?? "";
+    return SAFE_DATA_IMAGE.test(mime);
+  }
+  if (url.protocol === "blob:") {
+    const source = parseUrl(url.pathname);
+    return Boolean(source && (isKeplarAppUrl(source) || isAuthProviderUrl(source)));
+  }
   return isKeplarAppUrl(url) || isAuthProviderUrl(url);
 }
 
+const BLOCKED_NETWORK = new BlockList();
+BLOCKED_NETWORK.addSubnet("0.0.0.0", 8, "ipv4");
+BLOCKED_NETWORK.addSubnet("10.0.0.0", 8, "ipv4");
+BLOCKED_NETWORK.addSubnet("100.64.0.0", 10, "ipv4");
+BLOCKED_NETWORK.addSubnet("127.0.0.0", 8, "ipv4");
+BLOCKED_NETWORK.addSubnet("169.254.0.0", 16, "ipv4");
+BLOCKED_NETWORK.addSubnet("172.16.0.0", 12, "ipv4");
+BLOCKED_NETWORK.addSubnet("192.0.2.0", 24, "ipv4");
+BLOCKED_NETWORK.addSubnet("192.168.0.0", 16, "ipv4");
+BLOCKED_NETWORK.addSubnet("198.18.0.0", 15, "ipv4");
+BLOCKED_NETWORK.addSubnet("198.51.100.0", 24, "ipv4");
+BLOCKED_NETWORK.addSubnet("203.0.113.0", 24, "ipv4");
+BLOCKED_NETWORK.addSubnet("224.0.0.0", 4, "ipv4");
+BLOCKED_NETWORK.addSubnet("240.0.0.0", 4, "ipv4");
+BLOCKED_NETWORK.addAddress("::", "ipv6");
+BLOCKED_NETWORK.addAddress("::1", "ipv6");
+BLOCKED_NETWORK.addSubnet("fc00::", 7, "ipv6");
+BLOCKED_NETWORK.addSubnet("fe80::", 10, "ipv6");
+BLOCKED_NETWORK.addSubnet("ff00::", 8, "ipv6");
+
+/**
+ * Links the system browser may open. Plain http and local or private addresses
+ * stay closed so a page cannot poke services on this computer.
+ */
 export function isSafeExternalUrl(raw: string): boolean {
   const url = parseUrl(raw);
+  if (!url || url.username || url.password) return false;
+  if (url.protocol === "mailto:") {
+    if (raw.length > 2000 || hasControlChar(raw)) return false;
+    return url.pathname.includes("@");
+  }
+  if (url.protocol !== "https:") return false;
+  return !isLocalHost(url.hostname);
+}
+
+function hasControlChar(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    if (value.charCodeAt(i) < 32) return true;
+  }
+  return false;
+}
+
+/**
+ * Requests the page must not make to this computer. Public https stays open
+ * so the site can still load its own assets.
+ */
+export function isLocalNetworkUrl(raw: string): boolean {
+  const url = parseUrl(raw);
   if (!url) return false;
-  return (
-    url.protocol === "https:" ||
-    url.protocol === "http:" ||
-    url.protocol === "mailto:"
-  );
+  if (
+    url.protocol !== "http:" &&
+    url.protocol !== "https:" &&
+    url.protocol !== "ws:" &&
+    url.protocol !== "wss:"
+  ) {
+    return false;
+  }
+  return isLocalHost(url.hostname);
+}
+
+function isLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  const kind = isIP(host);
+  if (kind === 4) return BLOCKED_NETWORK.check(host, "ipv4");
+  if (kind === 6) {
+    const mapped = host.startsWith("::ffff:") ? host.slice("::ffff:".length) : "";
+    if (mapped && isIP(mapped) === 4) return BLOCKED_NETWORK.check(mapped, "ipv4");
+    return BLOCKED_NETWORK.check(host, "ipv6");
+  }
+  return false;
+}
+
+const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+
+/** A download name with the directory removed, so the save dialog cannot be pointed at another path. */
+export function safeDownloadName(name: string): string {
+  const leaf = name.replaceAll("\\", "/").split("/").pop() ?? "";
+  const base = leaf.replace(/[^\w.\- ()[\]]+/g, "_").replace(/[. ]+$/g, "");
+  if (!base || base === "." || base === ".." || WINDOWS_DEVICE.test(base)) return "download";
+  return base.slice(0, 180);
 }
 
 /** Origin and path only, so logs do not keep OAuth codes or query strings. */
