@@ -81,6 +81,24 @@ export function windowDragCss(): string {
     [data-keplar-drag] :is(a, button, input, textarea, select, label, [role="button"], [role="link"]) {
       -webkit-app-region: no-drag;
     }
+    /* The top bar is pointer-events: none so clicks fall through it. That also skips
+       the drag region, so the window cannot be dragged from the bar. */
+    html:is(.keplar-desktop, [data-keplar-desktop]) [data-keplar-drag] {
+      pointer-events: auto;
+    }
+    /* keplar.one's desktop rules call env() with CSS-module-hashed names, so the real
+       titlebar-area-* values never apply and the window controls cover the bar. */
+    html:is(.keplar-desktop, [data-keplar-desktop]) header[data-keplar-drag] {
+      padding-right: max(var(--s-6, 1.5rem), calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + var(--s-3, 0.75rem)));
+    }
+    html:is(.keplar-desktop, [data-keplar-desktop]) :is(div, aside)[data-keplar-drag] {
+      padding-left: max(var(--s-2, 0.5rem), env(titlebar-area-x, 0px));
+    }
+    html:is(.keplar-desktop, [data-keplar-desktop]) header.m-vt-nav {
+      padding-left: calc(env(titlebar-area-x, 0px) + var(--s-3, 0.75rem));
+      padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + var(--s-3, 0.75rem));
+      top: max(6px, calc((env(titlebar-area-height, 0px) - var(--l-nav-h, 40px)) / 2 + 6px));
+    }
   `;
 }
 
@@ -90,6 +108,9 @@ export function fullscreenHideCss(): string {
       display: none !important;
       width: 0 !important;
       height: 0 !important;
+      -webkit-app-region: no-drag !important;
+    }
+    [data-keplar-drag] {
       -webkit-app-region: no-drag !important;
     }
   `;

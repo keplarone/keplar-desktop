@@ -1,7 +1,7 @@
 import { app, screen, type BrowserWindow, type Rectangle } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { fitSizeToWorkArea, fitToWorkArea } from "./bounds";
+import { fitSizeToWorkArea, fitToWorkArea, shouldPersistBounds } from "./bounds";
 
 export interface WindowState {
   width: number;
@@ -67,26 +67,21 @@ export function trackWindowState(win: BrowserWindow): void {
   const save = (): void => {
     if (win.isDestroyed()) return;
     const isFullScreen = win.isFullScreen();
+    if (!shouldPersistBounds(isFullScreen, frameBeforeFullscreen !== null)) return;
     const isMaximized = !isFullScreen && win.isMaximized();
     const bounds = isFullScreen
       ? (frameBeforeFullscreen?.bounds ?? win.getNormalBounds())
       : isMaximized
         ? win.getNormalBounds()
         : win.getBounds();
-    const next: WindowState = {
+    writeWindowState({
       width: bounds.width,
       height: bounds.height,
       x: bounds.x,
       y: bounds.y,
       isMaximized: isFullScreen ? (frameBeforeFullscreen?.maximized ?? false) : isMaximized,
       isFullScreen,
-    };
-    try {
-      fs.mkdirSync(path.dirname(windowStatePath()), { recursive: true });
-      fs.writeFileSync(windowStatePath(), JSON.stringify(next));
-    } catch (error) {
-      console.error("Could not save window size", error);
-    }
+    });
   };
 
   let timer: NodeJS.Timeout | undefined;
@@ -103,8 +98,30 @@ export function trackWindowState(win: BrowserWindow): void {
   win.on("leave-full-screen", schedule);
   win.on("close", () => {
     if (timer) clearTimeout(timer);
+    if (!win.isDestroyed() && frameBeforeFullscreen && !win.isFullScreen()) {
+      const frame = frameBeforeFullscreen;
+      frameBeforeFullscreen = null;
+      writeWindowState({
+        width: frame.bounds.width,
+        height: frame.bounds.height,
+        x: frame.bounds.x,
+        y: frame.bounds.y,
+        isMaximized: frame.maximized,
+        isFullScreen: false,
+      });
+      return;
+    }
     save();
   });
+}
+
+function writeWindowState(next: WindowState): void {
+  try {
+    fs.mkdirSync(path.dirname(windowStatePath()), { recursive: true });
+    fs.writeFileSync(windowStatePath(), JSON.stringify(next));
+  } catch (error) {
+    console.error("Could not save window size", error);
+  }
 }
 
 export const windowMinimums = { minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT };

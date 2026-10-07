@@ -164,6 +164,46 @@ function isKeplarHost(hostname: string): boolean {
   return host === "keplar.one" || host.endsWith(".keplar.one");
 }
 
+export interface PagePermissionDetails {
+  requestingUrl?: string;
+  securityOrigin?: string;
+  mediaTypes?: readonly string[];
+  mediaType?: string;
+}
+
+const ALLOWED_PAGE_PERMISSIONS = new Set([
+  "notifications",
+  "clipboard-sanitized-write",
+  "fullscreen",
+  "automatic-fullscreen",
+]);
+
+/**
+ * Permissions the page may use. Copy uses the async clipboard API, and presenting
+ * slides uses the fullscreen API. Camera, clipboard read, and everything else stay off.
+ */
+export function allowsPagePermission(
+  permission: string,
+  details: PagePermissionDetails,
+  requestingOrigin = "",
+): boolean {
+  if (!isPagePermissionOrigin(details, requestingOrigin)) return false;
+  if (ALLOWED_PAGE_PERMISSIONS.has(permission)) return true;
+  if (permission !== "media") return false;
+  const types = details.mediaTypes ?? (details.mediaType ? [details.mediaType] : []);
+  return types.length > 0 && types.every((type) => type === "audio");
+}
+
+function isPagePermissionOrigin(details: PagePermissionDetails, requestingOrigin: string): boolean {
+  const raw = details.requestingUrl || details.securityOrigin || requestingOrigin;
+  if (!raw) return false;
+  try {
+    return isKeplarAppUrl(new URL(raw));
+  } catch {
+    return false;
+  }
+}
+
 function parseUrl(raw: string): URL | null {
   try {
     return new URL(raw);

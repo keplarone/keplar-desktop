@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fitSizeToWorkArea, fitToWorkArea } from "../src/main/bounds.ts";
+import { fitSizeToWorkArea, fitToWorkArea, shouldPersistBounds } from "../src/main/bounds.ts";
 
 // 1920x1080 screen with a 40px taskbar: work area 1920x1040.
 const area = { x: 0, y: 0, width: 1920, height: 1040 };
@@ -22,4 +22,10 @@ test("a window that already fits is untouched, including on a second display wit
 
 test("size only", () => {
   assert.deepEqual(fitSizeToWorkArea({ width: 2400, height: 1300 }, area), { width: 1920, height: 1040 });
+});
+
+test("a window stretched to the display before fullscreen flips is not saved", () => {
+  assert.equal(shouldPersistBounds(false, true), false);
+  assert.equal(shouldPersistBounds(true, true), true);
+  assert.equal(shouldPersistBounds(false, false), true);
 });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   CHROME_COLOR,
+  fullscreenHideCss,
   mainWindowChrome,
   titleBarOverlay,
   windowDragCss,
@@ -38,4 +39,15 @@ test("controls are raised with zero specificity so a site's own position (for ex
   const noDrag = css.match(/:is\(a, button[^{]*\{([^}]*)\}/);
   assert.ok(noDrag);
   assert.doesNotMatch(noDrag[1], /position/);
+});
+
+test("titlebar insets use the real env() names so window controls do not cover the page", () => {
+  const css = windowDragCss();
+  assert.match(css, /header\[data-keplar-drag\]/);
+  assert.match(css, /env\(titlebar-area-x, 0px\)/);
+  assert.match(css, /env\(titlebar-area-width, 100vw\)/);
+  assert.match(css, /env\(titlebar-area-height, 0px\)/);
+  assert.match(css, /pointer-events:\s*auto/);
+  assert.doesNotMatch(css, /env\([^)]*titlebar-area-x__/);
+  assert.match(fullscreenHideCss(), /\[data-keplar-drag\][\s\S]*-webkit-app-region:\s*no-drag !important/);
 });

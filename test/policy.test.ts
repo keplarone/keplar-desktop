@@ -9,6 +9,7 @@ import {
   isKeplarAppUrl,
   LEGACY_APP_URL,
   legacyAppFallback,
+  allowsPagePermission,
 } from "../src/main/policy.ts";
 
 describe("keplar app urls", () => {
@@ -108,6 +109,31 @@ describe("subframes", () => {
   it("blocks other origins inside frames", () => {
     assert.equal(isAllowedSubframeUrl("https://evil.example/phish"), false);
     assert.equal(isAllowedSubframeUrl("javascript:alert(1)"), false);
+  });
+});
+
+describe("page permissions", () => {
+  const ask = { requestingUrl: "https://keplar.one/app/ask" };
+
+  it("allows microphone, notifications, clipboard write, and fullscreen from keplar.one", () => {
+    assert.equal(allowsPagePermission("notifications", ask), true);
+    assert.equal(allowsPagePermission("clipboard-sanitized-write", ask), true);
+    assert.equal(allowsPagePermission("fullscreen", ask), true);
+    assert.equal(allowsPagePermission("automatic-fullscreen", ask), true);
+    assert.equal(allowsPagePermission("media", { ...ask, mediaTypes: ["audio"] }), true);
+    assert.equal(allowsPagePermission("media", { ...ask, mediaType: "audio" }), true);
+    assert.equal(allowsPagePermission("notifications", {}, "https://www.keplar.one"), true);
+  });
+
+  it("denies camera, clipboard read, and other origins", () => {
+    assert.equal(allowsPagePermission("media", { ...ask, mediaTypes: ["video"] }), false);
+    assert.equal(allowsPagePermission("media", { ...ask, mediaTypes: ["audio", "video"] }), false);
+    assert.equal(allowsPagePermission("media", { ...ask, mediaType: "unknown" }), false);
+    assert.equal(allowsPagePermission("clipboard-read", ask), false);
+    assert.equal(allowsPagePermission("geolocation", ask), false);
+    assert.equal(allowsPagePermission("notifications", { requestingUrl: "https://evil.example" }), false);
+    assert.equal(allowsPagePermission("notifications", { requestingUrl: "https://keplar.one.evil.example/app" }), false);
+    assert.equal(allowsPagePermission("clipboard-sanitized-write", {}), false);
   });
 });
 

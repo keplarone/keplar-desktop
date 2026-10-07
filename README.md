@@ -180,7 +180,7 @@ The user agent includes the token `keplar-desktop`. The document element is `htm
 
 The main window loads `https://keplar.one/app/ask` over HTTPS, and otherwise only `https://keplar.one` including subdomains. `https://keplar.one/app` remains an app URL; the site permanently redirects it to `/app/ask`. `keplar://` links open the matching path on that site (`keplar://app/chat` opens `https://keplar.one/app/chat`). The window title stays Keplar One, including when the site says Ask Keplar.
 
-Google, Microsoft, and Whop sign-in and checkout open in a separate window limited to those providers, then return to Keplar. Other links open in your default browser. Permission prompts are denied except the microphone (voice input) and notifications, and only when the request comes from `keplar.one`. There is no Node.js in the page, no preload API, and no webview.
+Google, Microsoft, and Whop sign-in and checkout open in a separate window limited to those providers, then return to Keplar. Other links open in your default browser. Permission prompts are denied except the microphone (voice input), notifications, copying to the clipboard, and fullscreen, and only when the request comes from `keplar.one`. There is no Node.js in the page, no preload API, and no webview.
 
 A second launch focuses the window that is already open.
 

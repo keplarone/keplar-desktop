@@ -54,6 +54,9 @@ ipcRenderer.on("signin:view", (_event, view: View) => {
   else draw(view);
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") ipcRenderer.send("signin:action", "cancel");
+  if (e.key !== "Escape") return;
+  // The code is already exchanged. Cancelling here would drop a sign-in that is about to finish.
+  if (document.querySelector("main")?.getAttribute("data-phase") === "finishing") return;
+  ipcRenderer.send("signin:action", "cancel");
 });
 ipcRenderer.send("signin:ready");

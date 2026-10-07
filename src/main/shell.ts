@@ -21,6 +21,7 @@ import {
 import { bindAccelerators } from "./menu";
 import {
   APP_URL,
+  allowsPagePermission,
   classifyNavigation,
   deepLinkToAppUrl,
   isAllowedSubframeUrl,
@@ -29,9 +30,9 @@ import {
   legacyAppFallback,
   urlForLog,
 } from "./policy";
-import { isAuthDeepLink, signInIntent } from "./desktop-auth";
-import { clearFinishing, handleAuthLink, initSignIn, isFinishingSignIn, startSignIn } from "./signin-window";
-import { documentCommitted, HEALTH_URL, healthSaysUp, reachabilityAction, type LoadFailure } from "./reachability";
+import { isAuthDeepLink, isFinishUrl, signInIntent } from "./desktop-auth";
+import { clearFinishing, handleAuthLink, holdFinishingGuard, initSignIn, isFinishingSignIn, startSignIn } from "./signin-window";
+import { documentCommitted, ERR_ABORTED, HEALTH_URL, healthSaysUp, reachabilityAction, type LoadFailure } from "./reachability";
 import { desktopUserAgent } from "./user-agent";
 import {
   captureFrameForFullscreen,
@@ -236,6 +237,7 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   win.webContents.on(
     "did-fail-load",
     (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (isMainFrame && errorCode !== ERR_ABORTED && isFinishUrl(validatedURL)) clearFinishing();
       void onAppLoadFailed(
         loadGeneration,
         { errorCode, isMainFrame, validatedURL },
@@ -252,7 +254,8 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
       showingOffline = false;
       recoveryTried = false;
     }
-    if (!current.includes("/api/auth/desktop/finish")) clearFinishing();
+    if (isFinishUrl(current)) holdFinishingGuard();
+    else clearFinishing();
   });
 
   win.webContents.on("render-process-gone", (_event, details) => {
@@ -288,11 +291,11 @@ export function configureSession(): void {
   ses.setUserAgent(desktopUserAgent(ses.getUserAgent()));
 
   ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
-    callback(allowsPermission(permission, details));
+    callback(allowsPagePermission(permission, details));
   });
 
-  ses.setPermissionCheckHandler((_contents, permission, _origin, details) => {
-    return allowsPermission(permission, details);
+  ses.setPermissionCheckHandler((_contents, permission, requestingOrigin, details) => {
+    return allowsPagePermission(permission, details, requestingOrigin);
   });
 
   ses.setDevicePermissionHandler(() => false);
@@ -473,7 +476,10 @@ function installGuards(): void {
         }
         return { action: "deny" };
       }
-      if (kind === "external") void openExternalUrl(url);
+      if (kind === "external") {
+        void openExternalUrl(url);
+        return { action: "deny" };
+      }
       console.warn("Blocked new window", urlForLog(url));
       return { action: "deny" };
     });
@@ -662,33 +668,6 @@ async function syncFullscreenCss(
   if (!key) return;
   await win.webContents.removeInsertedCSS(key);
   setKey(null);
-}
-
-function allowsPermission(
-  permission: string,
-  details: { requestingUrl?: string; securityOrigin?: string; mediaTypes?: string[]; mediaType?: string },
-): boolean {
-  if (!isKeplarPermission(details)) return false;
-  if (permission === "notifications") return true;
-  if (permission === "media") {
-    const types =
-      details.mediaTypes ?? (details.mediaType ? [details.mediaType] : []);
-    return types.length > 0 && types.every((type) => type === "audio");
-  }
-  return false;
-}
-
-function isKeplarPermission(details: {
-  requestingUrl?: string;
-  securityOrigin?: string;
-}): boolean {
-  const raw = details.requestingUrl || details.securityOrigin;
-  if (!raw) return false;
-  try {
-    return isKeplarAppUrl(new URL(raw));
-  } catch {
-    return false;
-  }
 }
 
 async function openExternalUrl(raw: string): Promise<void> {
