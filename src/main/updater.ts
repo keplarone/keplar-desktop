@@ -50,7 +50,11 @@ export function setupAutoUpdater(getWindow: () => BrowserWindow | null): void {
     });
   });
 
-  void checkForUpdates(false);
+  // The first page load should not share the network with a GitHub release check.
+  const timer = setTimeout(() => {
+    void checkForUpdates(false);
+  }, 15_000);
+  timer.unref?.();
 }
 
 export async function checkForUpdates(interactive: boolean): Promise<void> {

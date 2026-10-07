@@ -2,6 +2,8 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
+  nativeTheme,
   screen,
   session,
   shell,
@@ -13,10 +15,14 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   APP_TITLE,
+  chromePalette,
   fullscreenHideCss,
+  lightAuraCss,
   mainWindowChrome,
+  parseAppTheme,
   titleBarOverlay,
   windowDragCss,
+  type AppTheme,
 } from "./chrome";
 import { bindAccelerators } from "./menu";
 import {
@@ -63,6 +69,33 @@ let usedLegacyAppUrl = false;
 let pendingDeepLink: string | null = null;
 let lastExternal = { url: "", at: 0 };
 let handoffGeneration = 0;
+let chromeTheme: AppTheme = "dark";
+let chromeThemeBound = false;
+
+function systemChromeTheme(): AppTheme {
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
+
+function applyWindowChrome(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  win.setBackgroundColor(chromePalette(chromeTheme).background);
+  win.setTitleBarOverlay(titleBarOverlay(win.isFullScreen(), chromeTheme));
+}
+
+function bindChromeTheme(): void {
+  if (chromeThemeBound) return;
+  chromeThemeBound = true;
+  ipcMain.on("keplar:theme", (event, value: unknown) => {
+    if (mainWebContentsId === null || event.sender.id !== mainWebContentsId) return;
+    const frame = event.senderFrame;
+    if (frame && frame !== event.sender.mainFrame) return;
+    const theme = parseAppTheme(value);
+    if (!theme || theme === chromeTheme) return;
+    chromeTheme = theme;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) applyWindowChrome(win);
+  });
+}
 
 export function getMainWindow(): BrowserWindow | null {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
@@ -157,6 +190,7 @@ export function openDeepLink(raw: string): void {
 
 export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   installGuards();
+  bindChromeTheme();
   const existing = getMainWindow();
   if (existing) {
     focusMain();
@@ -165,13 +199,14 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
 
   const state = loadWindowState();
   const icon = iconPath();
+  chromeTheme = systemChromeTheme();
   const options: BrowserWindowConstructorOptions = {
     width: state.width,
     height: state.height,
     minWidth: windowMinimums.minWidth,
     minHeight: windowMinimums.minHeight,
     show: false,
-    ...mainWindowChrome(process.platform),
+    ...mainWindowChrome(process.platform, chromeTheme),
     webPreferences: hardenedWebPreferences(),
   };
   if (state.x !== undefined && state.y !== undefined) {
@@ -192,7 +227,7 @@ export async function createMainWindow(initialUrl = APP_URL): Promise<void> {
   });
   win.webContents.on("dom-ready", () => {
     if (win.isDestroyed()) return;
-    void win.webContents.insertCSS(windowDragCss());
+    void win.webContents.insertCSS(desktopShellCss());
     win.setTitle(APP_TITLE);
   });
   bindFullscreenChrome(win);
@@ -418,8 +453,7 @@ async function showOffline(generation: number): Promise<void> {
     classifyNavigation(currentTarget) === "app" && currentTarget.startsWith("https:")
       ? currentTarget
       : APP_URL;
-  const template = fs.readFileSync(offlineTemplateFile(), "utf8");
-  const html = template.replaceAll("{{RETRY_URL}}", escapeAttribute(retry));
+  const html = offlineTemplate().replaceAll("{{RETRY_URL}}", escapeAttribute(retry));
   const file = path.join(app.getPath("temp"), "keplar-offline.html");
   await fs.promises.writeFile(file, html, "utf8");
   if (win.isDestroyed() || generation !== loadGeneration || appDocumentVisible()) {
@@ -628,7 +662,7 @@ function bindFullscreenChrome(win: BrowserWindow): void {
     try {
       const fullscreen = win.isFullScreen();
       if (fullscreen) ensureFullscreenFrame(win);
-      win.setTitleBarOverlay(titleBarOverlay(fullscreen));
+      win.setTitleBarOverlay(titleBarOverlay(fullscreen, chromeTheme));
       if (process.platform === "darwin") win.setWindowButtonVisibility(!fullscreen);
       if (!fullscreen && process.platform === "win32") win.setAlwaysOnTop(false);
       if (!fullscreen) {
@@ -712,8 +746,22 @@ function loadingFile(): string {
   return path.join(__dirname, "../renderer/loading.html");
 }
 
+let cachedOfflineTemplate: string | null = null;
+
 function offlineTemplateFile(): string {
   return path.join(__dirname, "../renderer/offline.html");
+}
+
+function offlineTemplate(): string {
+  cachedOfflineTemplate ??= fs.readFileSync(offlineTemplateFile(), "utf8");
+  return cachedOfflineTemplate;
+}
+
+let cachedShellCss: string | null = null;
+
+function desktopShellCss(): string {
+  cachedShellCss ??= `${windowDragCss()}\n${lightAuraCss()}`;
+  return cachedShellCss;
 }
 
 function escapeAttribute(value: string): string {

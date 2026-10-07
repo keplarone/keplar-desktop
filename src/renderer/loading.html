@@ -79,6 +79,25 @@
           opacity: 0.45;
         }
       }
+      @media (prefers-color-scheme: light) {
+        :root { color-scheme: light; }
+        html, body { background-color: #f7f6f3; color: #141518; }
+        body { background: transparent; }
+        html {
+          background-image:
+            radial-gradient(46vmax 40vmax at 22% -8%, rgba(255, 156, 122, 0.7), transparent 68%),
+            radial-gradient(44vmax 40vmax at 96% 0%, rgba(168, 146, 255, 0.55), transparent 66%),
+            radial-gradient(42vmax 36vmax at 70% 108%, rgba(98, 198, 214, 0.5), transparent 70%),
+            radial-gradient(38vmax 34vmax at 40% 100%, rgba(255, 196, 140, 0.48), transparent 72%);
+          background-repeat: no-repeat;
+          background-size: 150% 150%;
+        }
+        p { color: #3a3d44; }
+        svg g { fill: #141518; }
+        svg { filter: drop-shadow(0 0 28px rgba(255, 156, 122, 0.65)) drop-shadow(0 0 52px rgba(168, 146, 255, 0.45)); }
+        .bar { background: #1415181a; }
+        .bar span { background: #141518; }
+      }
     </style>
   </head>
   <body>

@@ -1,9 +1,15 @@
-import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, shell, type IpcMainEvent } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SignInFlow, viewFor, type FlowState, type SignInKind } from "./desktop-auth";
+import { chromePalette, type AppTheme } from "./chrome";
 import { APP_ORIGIN, isSafeExternalUrl } from "./policy";
+
+function shellBackground(): string {
+  const theme: AppTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  return chromePalette(theme).background;
+}
 
 let flow: SignInFlow | null = null;
 let win: BrowserWindow | null = null;
@@ -31,6 +37,10 @@ export function initSignIn(options: { getMainWindow: () => BrowserWindow | null;
     if (id === "cancel") cancelSignIn();
     else if (id === "retry") void ensureFlow().retry();
     else if (id === "reopen") void ensureFlow().reopenBrowser();
+  });
+  nativeTheme.on("updated", () => {
+    if (!win || win.isDestroyed()) return;
+    win.setBackgroundColor(shellBackground());
   });
 }
 
@@ -139,7 +149,7 @@ function openWindow(): void {
     fullscreenable: false,
     show: false,
     title: "Keplar One",
-    backgroundColor: "#0b0b0d",
+    backgroundColor: shellBackground(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/signin-preload.js"),

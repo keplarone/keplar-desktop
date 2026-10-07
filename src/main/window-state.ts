@@ -64,7 +64,7 @@ export function loadWindowState(): WindowState {
 }
 
 export function trackWindowState(win: BrowserWindow): void {
-  const save = (): void => {
+  const save = (sync = false): void => {
     if (win.isDestroyed()) return;
     const isFullScreen = win.isFullScreen();
     if (!shouldPersistBounds(isFullScreen, frameBeforeFullscreen !== null)) return;
@@ -74,20 +74,24 @@ export function trackWindowState(win: BrowserWindow): void {
       : isMaximized
         ? win.getNormalBounds()
         : win.getBounds();
-    writeWindowState({
-      width: bounds.width,
-      height: bounds.height,
-      x: bounds.x,
-      y: bounds.y,
-      isMaximized: isFullScreen ? (frameBeforeFullscreen?.maximized ?? false) : isMaximized,
-      isFullScreen,
-    });
+    writeWindowState(
+      {
+        width: bounds.width,
+        height: bounds.height,
+        x: bounds.x,
+        y: bounds.y,
+        isMaximized: isFullScreen ? (frameBeforeFullscreen?.maximized ?? false) : isMaximized,
+        isFullScreen,
+      },
+      sync,
+    );
   };
 
   let timer: NodeJS.Timeout | undefined;
   const schedule = (): void => {
     if (timer) clearTimeout(timer);
-    timer = setTimeout(save, 250);
+    // Resize and move fire every frame. Wait until the drag settles before touching disk.
+    timer = setTimeout(save, 800);
   };
 
   win.on("resize", schedule);
@@ -101,27 +105,54 @@ export function trackWindowState(win: BrowserWindow): void {
     if (!win.isDestroyed() && frameBeforeFullscreen && !win.isFullScreen()) {
       const frame = frameBeforeFullscreen;
       frameBeforeFullscreen = null;
-      writeWindowState({
-        width: frame.bounds.width,
-        height: frame.bounds.height,
-        x: frame.bounds.x,
-        y: frame.bounds.y,
-        isMaximized: frame.maximized,
-        isFullScreen: false,
-      });
+      writeWindowState(
+        {
+          width: frame.bounds.width,
+          height: frame.bounds.height,
+          x: frame.bounds.x,
+          y: frame.bounds.y,
+          isMaximized: frame.maximized,
+          isFullScreen: false,
+        },
+        true,
+      );
       return;
     }
-    save();
+    save(true);
   });
 }
 
-function writeWindowState(next: WindowState): void {
-  try {
-    fs.mkdirSync(path.dirname(windowStatePath()), { recursive: true });
-    fs.writeFileSync(windowStatePath(), JSON.stringify(next));
-  } catch (error) {
-    console.error("Could not save window size", error);
+let latestStateBody = "";
+let writtenStateBody = "";
+let stateWrite: Promise<void> = Promise.resolve();
+
+function writeWindowState(next: WindowState, sync = false): void {
+  const body = JSON.stringify(next);
+  if (!sync && body === latestStateBody) return;
+  latestStateBody = body;
+  const file = windowStatePath();
+  if (sync) {
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, body);
+      writtenStateBody = body;
+    } catch (error) {
+      console.error("Could not save window size", error);
+    }
+    return;
   }
+  stateWrite = stateWrite
+    .then(async () => {
+      const snapshot = latestStateBody;
+      if (snapshot === writtenStateBody) return;
+      await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      if (latestStateBody !== snapshot) return;
+      await fs.promises.writeFile(file, snapshot);
+      if (latestStateBody === snapshot) writtenStateBody = snapshot;
+    })
+    .catch((error: unknown) => {
+      console.error("Could not save window size", error);
+    });
 }
 
 export const windowMinimums = { minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT };
